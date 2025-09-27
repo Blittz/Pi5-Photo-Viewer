@@ -1,110 +1,106 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QKeyEvent, QFont
-from slideshow.image_viewer import ImageViewer
-from utils.file_loader import load_images_from_folders
 import os
 import random
+from PyQt6.QtCore import QTimer
+from PyQt6.QtWidgets import QWidget, QVBoxLayout
+from .image_viewer import ImageViewer
+
+SUPPORTED_IMAGE_FORMATS = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp')
+
+
+def get_all_images_from_folders(folders):
+    image_paths = []
+    for folder in folders:
+        if not os.path.isdir(folder):
+            continue
+        for root, _, files in os.walk(folder):
+            for file in sorted(files):
+                if file.lower().endswith(SUPPORTED_IMAGE_FORMATS):
+                    image_paths.append(os.path.join(root, file))
+    return image_paths
+
 
 class SlideshowManager(QWidget):
     def __init__(self, folders, shuffle=False, duration=5, motion_enabled=True):
         super().__init__()
-        self.setWindowTitle("Slideshow")
-        self.setStyleSheet("background-color: black;")
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
-
-        self.viewer = ImageViewer()
-        self.layout.addWidget(self.viewer)
-
-        # Overlay label at bottom center
-        self.overlay = QLabel(self)
-        self.overlay.setStyleSheet("""
-            color: white;
-            background-color: rgba(0, 0, 0, 150);
-            padding: 10px;
-        """)
-        self.overlay.setFont(QFont("Arial", 16))
-        self.overlay.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-        self.overlay.setFixedHeight(50)
-        self.overlay.raise_()
-
-        # Load images
-        images = load_images_from_folders(folders)
-        if shuffle:
-            random.shuffle(images)
-
-        self.images = images
-        self.index = 0
+        self.folders = folders
+        self.shuffle = shuffle
         self.duration = duration
-        self.paused = False
-        self.is_fullscreen = True
         self.motion_enabled = motion_enabled
+        self.current_index = 0
+        self.current_image_path = None
+        self.images = []
 
-        # Timer for slideshow
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.next_image)
-        self.timer.start(self.duration * 1000)
+        self.viewer = ImageViewer(motion_enabled=self.motion_enabled)
 
-        self.next_image()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.viewer)
+        self.setLayout(layout)
+
+        self.load_images()
+        self.start_slideshow()
+
+        # Timer to switch images
+        self.slideshow_timer = QTimer(self)
+        self.slideshow_timer.timeout.connect(self.next_image)
+        self.slideshow_timer.start(self.duration * 1000)
+
+        # Timer to refresh folder images
+        self.refresh_timer = QTimer(self)
+        self.refresh_timer.timeout.connect(self.refresh_images)
+        self.refresh_timer.start(60000)  # 60 seconds
+
+    def load_images(self):
+        self.images = get_all_images_from_folders(self.folders)
+        if self.shuffle:
+            random.shuffle(self.images)
+
+    def refresh_images(self):
+        new_images = get_all_images_from_folders(self.folders)
+
+        if self.shuffle:
+            random.shuffle(new_images)
+
+        # Attempt to maintain current image
+        if self.current_image_path in new_images:
+            self.current_index = new_images.index(self.current_image_path)
+        else:
+            self.current_index = 0
+            self.current_image_path = None
+
+        self.images = new_images
+
+    def start_slideshow(self):
+        if not self.images:
+            return
+        self.show_image(self.current_index)
+
+    def show_image(self, index):
+        if not self.images:
+            return
+        self.current_index = index % len(self.images)
+        self.current_image_path = self.images[self.current_index]
+        self.viewer.set_image(self.current_image_path)
 
     def next_image(self):
         if not self.images:
             return
+        self.current_index = (self.current_index + 1) % len(self.images)
+        self.show_image(self.current_index)
 
-        image_path = self.images[self.index]
-        self.viewer.show_image(
-            image_path,
-            duration=self.duration * 1000,
-            motion=self.motion_enabled
-        )
-        self.update_overlay(image_path)
-        self.index = (self.index + 1) % len(self.images)
+    def pause(self):
+        self.slideshow_timer.stop()
 
-    def prev_image(self):
-        if not self.images:
-            return
-        self.index = (self.index - 2) % len(self.images)
-        self.next_image()
+    def resume(self):
+        self.slideshow_timer.start(self.duration * 1000)
 
-    def toggle_pause(self):
-        if self.paused:
-            self.timer.start(self.duration * 1000)
-        else:
-            self.timer.stop()
-        self.paused = not self.paused
-        current_image = self.images[(self.index - 1) % len(self.images)]
-        self.update_overlay(current_image)
+    def set_duration(self, seconds):
+        self.duration = seconds
+        self.slideshow_timer.start(self.duration * 1000)
 
-    def update_overlay(self, image_path):
-        folder = os.path.basename(os.path.dirname(image_path))
-        filename = os.path.basename(image_path)
-        text = f"{folder} / {filename}"
-        if self.paused:
-            text += "   [PAUSED]"
-        self.overlay.setText(text)
-
-    def resizeEvent(self, event):
-        self.overlay.resize(self.width(), 50)
-        self.overlay.move(0, self.height() - self.overlay.height())
-
-    def keyPressEvent(self, event: QKeyEvent):
-        key = event.key()
-        if key == Qt.Key.Key_Escape:
-            self.close()
-        elif key == Qt.Key.Key_Space:
-            self.toggle_pause()
-        elif key == Qt.Key.Key_Right:
-            self.next_image()
-        elif key == Qt.Key.Key_Left:
-            self.prev_image()
-        elif key == Qt.Key.Key_F11:
-            self.toggle_fullscreen()
-
-    def toggle_fullscreen(self):
-        if self.is_fullscreen:
-            self.showNormal()
-        else:
-            self.showFullScreen()
-        self.is_fullscreen = not self.is_fullscreen
+    def toggle_shuffle(self, enabled):
+        self.shuffle = enabled
+        self.load_images()
+        self.current_index = 0
+        self.start_slideshow()
