@@ -1,5 +1,7 @@
 import math
 import random
+import os
+
 from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation, QEasingCurve
 from PyQt6.QtGui import QPixmap, QTransform, QPainter
 from PyQt6.QtWidgets import (
@@ -7,6 +9,7 @@ from PyQt6.QtWidgets import (
     QGraphicsScene,
     QGraphicsPixmapItem,
     QSizePolicy,
+    QLabel,
 )
 
 
@@ -49,14 +52,27 @@ class ImageViewer(QGraphicsView):
         self.total_dy = 0.0
         self.motion_prepared = False
 
+        self.overlay_label = QLabel(self)
+        self.overlay_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.overlay_label.setStyleSheet(
+            "color: white; background-color: rgba(0, 0, 0, 180);"
+            "padding: 6px 14px; border-radius: 12px;"
+        )
+        self.overlay_label.setWordWrap(True)
+        self.overlay_label.setVisible(False)
+        self.overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.overlay_margin = 20
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if not self._current_pixmap.isNull():
             self._fit_pixmap()
+        self._update_overlay_position()
 
     def set_image(self, image_path, duration=None):
         pixmap = QPixmap(image_path)
         if pixmap.isNull():
+            self.overlay_label.setVisible(False)
             return
 
         self.motion_timer.stop()
@@ -68,6 +84,15 @@ class ImageViewer(QGraphicsView):
         self.scene.setSceneRect(QRectF(pixmap.rect()))
         self.resetTransform()
         self._fit_pixmap()
+
+        folder_name = os.path.basename(os.path.dirname(image_path))
+        file_name = os.path.basename(image_path)
+        overlay_text = f"{folder_name}\n{file_name}" if folder_name else file_name
+        self.overlay_label.setText(overlay_text)
+        self.overlay_label.setVisible(True)
+        self.overlay_label.adjustSize()
+        self.overlay_label.raise_()
+        self._update_overlay_position()
 
         if self.motion_enabled:
             self._prepare_motion_parameters()
@@ -154,3 +179,20 @@ class ImageViewer(QGraphicsView):
         self.motion_prepared = True
 
         self.apply_motion_progress(0.0)
+
+    def _update_overlay_position(self):
+        if not self.overlay_label.isVisible():
+            return
+
+        max_width = max(0, self.viewport().width() - self.overlay_margin * 2)
+        self.overlay_label.setMaximumWidth(max_width)
+        self.overlay_label.adjustSize()
+
+        label_width = self.overlay_label.width()
+        label_height = self.overlay_label.height()
+
+        x = max(self.overlay_margin, (self.viewport().width() - label_width) // 2)
+        y = self.viewport().height() - label_height - self.overlay_margin
+
+        # Position relative to the widget coordinates.
+        self.overlay_label.move(int(x), int(y))
