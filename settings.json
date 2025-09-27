@@ -6,5 +6,5 @@
     "shuffle": true,
     "motion": true,
     "duration": 5,
-    "overlay_percentage": 11
+    "overlay_title_font_size": 18
 }

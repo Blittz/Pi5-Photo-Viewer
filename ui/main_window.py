@@ -84,23 +84,23 @@ class MainWindow(QWidget):
 
         layout.addLayout(duration_layout)
 
-        # Overlay size slider
-        overlay_layout = QHBoxLayout()
-        overlay_label = QLabel("Overlay Width (% of image):")
-        self.overlay_slider = QSlider(Qt.Orientation.Horizontal)
-        self.overlay_slider.setRange(10, 100)
-        self.overlay_slider.setValue(40)
-        self.overlay_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.overlay_slider.setTickInterval(5)
-        self.overlay_slider.valueChanged.connect(self.update_overlay_label)
+        # Title font size slider
+        title_layout = QHBoxLayout()
+        title_label = QLabel("Title Font Size (pt):")
+        self.title_slider = QSlider(Qt.Orientation.Horizontal)
+        self.title_slider.setRange(12, 48)
+        self.title_slider.setValue(24)
+        self.title_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.title_slider.setTickInterval(2)
+        self.title_slider.valueChanged.connect(self.update_title_label)
 
-        self.overlay_display = QLabel()
-        self.update_overlay_label()
-        overlay_layout.addWidget(overlay_label)
-        overlay_layout.addWidget(self.overlay_slider)
-        overlay_layout.addWidget(self.overlay_display)
+        self.title_display = QLabel()
+        self.update_title_label()
+        title_layout.addWidget(title_label)
+        title_layout.addWidget(self.title_slider)
+        title_layout.addWidget(self.title_display)
 
-        layout.addLayout(overlay_layout)
+        layout.addLayout(title_layout)
 
         # Start slideshow
         start_btn = QPushButton("Start Slideshow")
@@ -151,14 +151,14 @@ class MainWindow(QWidget):
         shuffle = self.shuffle_checkbox.isChecked()
         duration = self.duration_slider.value()
         motion_enabled = self.motion_checkbox.isChecked()
-        overlay_percentage = self.overlay_slider.value()
+        title_font_size = self.title_slider.value()
 
         self.slideshow = SlideshowManager(
             self.folders,
             shuffle=shuffle,
             duration=duration,
             motion_enabled=motion_enabled,
-            overlay_percentage=overlay_percentage,
+            title_font_size=title_font_size,
         )
         self.slideshow.showFullScreen()
 
@@ -169,13 +169,19 @@ class MainWindow(QWidget):
         shuffle = data.get("shuffle", True)
         motion = data.get("motion", True)
         duration = data.get("duration", 5)
-        overlay_percentage = data.get("overlay_percentage", 40)
+        title_font_size = data.get("overlay_title_font_size")
+        if title_font_size is None:
+            legacy_percentage = data.get("overlay_percentage")
+            if legacy_percentage is not None:
+                title_font_size = self.convert_legacy_overlay_percentage(legacy_percentage)
+            else:
+                title_font_size = 24
 
         self.shuffle_checkbox.setChecked(shuffle)
         self.motion_checkbox.setChecked(motion)
         self.duration_slider.setValue(duration)
-        self.overlay_slider.setValue(overlay_percentage)
-        self.update_overlay_label()
+        self.title_slider.setValue(int(round(title_font_size)))
+        self.update_title_label()
 
         self.folder_list.clear()
         for folder in self.folders:
@@ -189,7 +195,7 @@ class MainWindow(QWidget):
             "shuffle": self.shuffle_checkbox.isChecked(),
             "motion": self.motion_checkbox.isChecked(),
             "duration": self.duration_slider.value(),
-            "overlay_percentage": self.overlay_slider.value(),
+            "overlay_title_font_size": self.title_slider.value(),
         }
         save_json_settings(data)
 
@@ -197,5 +203,21 @@ class MainWindow(QWidget):
         self.save_settings()
         super().closeEvent(event)
 
-    def update_overlay_label(self):
-        self.overlay_display.setText(f"{self.overlay_slider.value()}%")
+    def update_title_label(self):
+        self.title_display.setText(f"{self.title_slider.value()} pt")
+
+    @staticmethod
+    def convert_legacy_overlay_percentage(percentage):
+        try:
+            value = float(percentage)
+        except (TypeError, ValueError):
+            return 24
+
+        min_slider = 10.0
+        max_slider = 100.0
+        min_font = 12.0
+        max_font = 36.0
+
+        clamped = max(min_slider, min(value, max_slider))
+        ratio = (clamped - min_slider) / (max_slider - min_slider)
+        return min_font + ratio * (max_font - min_font)

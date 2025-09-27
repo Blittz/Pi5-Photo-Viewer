@@ -14,11 +14,11 @@ from PyQt6.QtWidgets import (
 
 
 class ImageViewer(QGraphicsView):
-    def __init__(self, motion_enabled=True, overlay_percentage=40):
+    def __init__(self, motion_enabled=True, title_font_size=24):
         super().__init__()
 
         self.motion_enabled = motion_enabled
-        self.overlay_percentage = float(overlay_percentage)
+        self.title_font_size = self._sanitize_font_size(title_font_size)
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
         self.setBackgroundBrush(Qt.GlobalColor.black)
@@ -91,7 +91,6 @@ class ImageViewer(QGraphicsView):
         overlay_text = f"{folder_name}\n{file_name}" if folder_name else file_name
         self.overlay_label.setText(overlay_text)
         self.overlay_label.setVisible(True)
-        self.overlay_label.adjustSize()
         self.overlay_label.raise_()
         self._update_overlay_position()
 
@@ -182,28 +181,29 @@ class ImageViewer(QGraphicsView):
 
         self.apply_motion_progress(0.0)
 
-    def set_overlay_percentage(self, percentage):
-        try:
-            self.overlay_percentage = max(0.0, float(percentage))
-        except (TypeError, ValueError):
+    def set_title_font_size(self, font_size):
+        sanitized = self._sanitize_font_size(font_size)
+        if math.isclose(self.title_font_size, sanitized):
             return
+        self.title_font_size = sanitized
         self._update_overlay_position()
 
     def _update_overlay_position(self):
-        max_width = self._calculate_overlay_max_width()
-        if max_width <= 0 or self.overlay_label.text() == "":
+        if self.overlay_label.text() == "":
+            self.overlay_label.setVisible(False)
+            return
+
+        max_width = self._calculate_title_max_width()
+        if max_width <= 0:
             self.overlay_label.setVisible(False)
             return
 
         if not self.overlay_label.isVisible():
             self.overlay_label.setVisible(True)
 
-        self._update_overlay_font_size(max_width)
         self.overlay_label.setMaximumWidth(max_width)
+        self._apply_title_font_size()
         self.overlay_label.adjustSize()
-        # Enforce the computed width in case adjustSize shrinks it.
-        if self.overlay_label.width() > max_width:
-            self.overlay_label.resize(max_width, self.overlay_label.height())
 
         label_width = self.overlay_label.width()
         label_height = self.overlay_label.height()
@@ -214,21 +214,17 @@ class ImageViewer(QGraphicsView):
         # Position relative to the widget coordinates.
         self.overlay_label.move(int(x), int(y))
 
-    def _calculate_overlay_max_width(self):
-        if self.overlay_percentage <= 0:
-            return 0
-        image_rect = self._get_displayed_pixmap_rect()
-        if image_rect.isNull():
-            return 0
-
-        image_width = image_rect.width()
-        max_width_by_image = int(image_width * (self.overlay_percentage / 100.0))
-
+    def _calculate_title_max_width(self):
         viewport_limit = max(0, self.viewport().width() - self.overlay_margin * 2)
         if viewport_limit <= 0:
-            return max(0, max_width_by_image)
+            return 0
 
-        return max(0, min(max_width_by_image, viewport_limit))
+        image_rect = self._get_displayed_pixmap_rect()
+        if image_rect.isNull():
+            return viewport_limit
+
+        image_width = image_rect.width()
+        return max(0, min(int(image_width), viewport_limit))
 
     def _get_displayed_pixmap_rect(self):
         if self.pixmap_item.pixmap().isNull():
@@ -237,33 +233,15 @@ class ImageViewer(QGraphicsView):
         transform = self.transform()
         return transform.mapRect(self.pixmap_item.boundingRect())
 
-    def _update_overlay_font_size(self, max_width):
-        """Scale the overlay font relative to the configured width."""
-
-        if max_width <= 0:
-            return
-
+    def _apply_title_font_size(self):
         font = self.overlay_label.font()
+        font.setPointSizeF(self.title_font_size)
+        self.overlay_label.setFont(font)
 
-        min_slider = 10.0
-        max_slider = 100.0
-        clamped_percentage = max(min_slider, min(self.overlay_percentage, max_slider))
-        slider_ratio = (clamped_percentage - min_slider) / (max_slider - min_slider)
-
-        min_font_size = 12.0
-        max_font_size = 36.0
-
-        new_font_size = min_font_size + slider_ratio * (max_font_size - min_font_size)
-
-        # Prevent the font from growing larger than the available width can support.
-        max_supported_size = max_width / 12.0
-        if max_supported_size > 0:
-            new_font_size = min(new_font_size, max_supported_size)
-
-        current_size = font.pointSizeF()
-        if current_size <= 0:
-            current_size = font.pointSize()
-
-        if not math.isclose(current_size, new_font_size, rel_tol=0.05):
-            font.setPointSizeF(new_font_size)
-            self.overlay_label.setFont(font)
+    @staticmethod
+    def _sanitize_font_size(font_size):
+        try:
+            size = float(font_size)
+        except (TypeError, ValueError):
+            return 24.0
+        return max(8.0, size)
