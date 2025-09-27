@@ -1,0 +1,47 @@
+from PyQt6.QtWidgets import QCheckBox
+from config import save_folders, load_folders
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QPushButton, QFileDialog, QLabel, QListWidget, QMessageBox
+)
+from slideshow.slideshow_manager import SlideshowManager
+import os
+
+class MainWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Pi5 Photo Viewer")
+        self.resize(500, 400)
+
+        self.layout = QVBoxLayout(self)
+
+        self.folder_list = QListWidget()
+        self.layout.addWidget(QLabel("Selected Folders:"))
+        self.layout.addWidget(self.folder_list)
+
+        self.select_button = QPushButton("Add Folder(s)")
+        self.select_button.clicked.connect(self.select_folders)
+        self.layout.addWidget(self.select_button)
+
+        self.start_button = QPushButton("Start Slideshow")
+        self.start_button.clicked.connect(self.start_slideshow)
+        self.layout.addWidget(self.start_button)
+
+        self.folders = load_folders()
+        for folder in self.folders:
+            self.folder_list.addItem(folder)
+
+
+    def select_folders(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Folder")
+        if folder and folder not in self.folders:
+            self.folders.append(folder)
+            self.folder_list.addItem(folder)
+
+    def start_slideshow(self):
+        if not self.folders:
+            QMessageBox.warning(self, "No Folders", "Please select at least one folder.")
+            return
+        save_folders(self.folders)
+        self.slideshow = SlideshowManager(self.folders)
+        self.slideshow.showFullScreen()
+

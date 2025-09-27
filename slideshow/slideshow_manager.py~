@@ -1,0 +1,29 @@
+from PyQt6.QtWidgets import QWidget, QVBoxLayout
+from PyQt6.QtCore import QTimer
+from slideshow.image_viewer import ImageViewer
+from utils.file_loader import load_images_from_folders
+
+class SlideshowManager(QWidget):
+    def __init__(self, folders):
+        super().__init__()
+        self.setWindowTitle("Slideshow")
+        self.setStyleSheet("background-color: black;")
+        self.layout = QVBoxLayout(self)
+        self.viewer = ImageViewer()
+        self.layout.addWidget(self.viewer)
+
+        self.images = load_images_from_folders(folders)
+        self.index = 0
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.next_image)
+        self.timer.start(5000)  # Change every 5 seconds
+
+        self.next_image()
+
+    def next_image(self):
+        if not self.images:
+            return
+        image_path = self.images[self.index]
+        self.viewer.show_image(image_path)
+        self.index = (self.index + 1) % len(self.images)
