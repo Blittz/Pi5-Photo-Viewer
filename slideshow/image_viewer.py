@@ -41,6 +41,11 @@ class ImageViewer(QGraphicsView):
         self.motion_duration = 5000  # default duration (ms), can be overridden per image
         self._current_pixmap = QPixmap()
         self.base_transform = QTransform()
+        self.start_scale = 1.0
+        self.end_scale = 1.0
+        self.total_dx = 0.0
+        self.total_dy = 0.0
+        self.motion_prepared = False
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -62,6 +67,11 @@ class ImageViewer(QGraphicsView):
         self.resetTransform()
         self._fit_pixmap()
 
+        if self.motion_enabled:
+            self._prepare_motion_parameters()
+        else:
+            self.motion_prepared = False
+
         if duration is not None:
             self.motion_duration = max(0, int(duration * 1000))
 
@@ -72,28 +82,24 @@ class ImageViewer(QGraphicsView):
         if not self.motion_enabled:
             return
 
-        self.resetTransform()
-        self._fit_pixmap()
-
-        self.base_transform = self.transform()
-
-        zoom_in = random.choice([True, False])
-        if zoom_in:
-            self.start_scale = 1.0
-            self.end_scale = random.uniform(1.08, 1.2)
-        else:
-            self.start_scale = random.uniform(1.08, 1.2)
-            self.end_scale = 1.0
-
-        pan_ratio = random.uniform(0.02, 0.08)
-        pan_angle = random.uniform(0, 2 * math.pi)
-        pixmap_rect = self.pixmap_item.boundingRect()
-
-        self.total_dx = pixmap_rect.width() * pan_ratio * math.cos(pan_angle)
-        self.total_dy = pixmap_rect.height() * pan_ratio * math.sin(pan_angle)
+        if self._current_pixmap.isNull():
+            return
 
         if self.motion_duration <= 0:
             return
+
+        self.setUpdatesEnabled(False)
+        try:
+            self.resetTransform()
+            self._fit_pixmap()
+            if self.motion_prepared:
+                self.apply_motion_progress(0.0)
+            else:
+                self._prepare_motion_parameters()
+        finally:
+            self.setUpdatesEnabled(True)
+
+        self.viewport().update()
 
         self.motion_anim.stop()
         self.motion_anim.setStartValue(0.0)
@@ -122,3 +128,27 @@ class ImageViewer(QGraphicsView):
 
         self.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
         self.base_transform = self.transform()
+
+    def _prepare_motion_parameters(self):
+        pixmap = self.pixmap_item.pixmap()
+        if pixmap.isNull():
+            self.motion_prepared = False
+            return
+
+        zoom_in = random.choice([True, False])
+        if zoom_in:
+            self.start_scale = 1.0
+            self.end_scale = random.uniform(1.08, 1.2)
+        else:
+            self.start_scale = random.uniform(1.08, 1.2)
+            self.end_scale = 1.0
+
+        pan_ratio = random.uniform(0.02, 0.08)
+        pan_angle = random.uniform(0, 2 * math.pi)
+        pixmap_rect = self.pixmap_item.boundingRect()
+
+        self.total_dx = pixmap_rect.width() * pan_ratio * math.cos(pan_angle)
+        self.total_dy = pixmap_rect.height() * pan_ratio * math.sin(pan_angle)
+        self.motion_prepared = True
+
+        self.apply_motion_progress(0.0)
