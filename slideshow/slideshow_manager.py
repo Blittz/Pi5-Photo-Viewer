@@ -85,7 +85,7 @@ class SlideshowManager(QWidget):
             return
         self.current_index = index % len(self.images)
         self.current_image_path = self.images[self.current_index]
-        self.viewer.set_image(self.current_image_path)
+        self.viewer.set_image(self.current_image_path, duration=self.duration)
 
     def next_image(self):
         if not self.images:

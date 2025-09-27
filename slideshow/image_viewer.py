@@ -1,5 +1,5 @@
 import random
-from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QRectF, QPointF
+from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation
 from PyQt6.QtGui import QPixmap, QTransform, QPainter
 from PyQt6.QtWidgets import (
     QGraphicsView,
@@ -33,8 +33,8 @@ class ImageViewer(QGraphicsView):
         self.motion_timer.setSingleShot(True)
         self.motion_timer.timeout.connect(self.start_motion)
 
-        self.motion_anim_timer = QTimer(self)
-        self.motion_anim_timer.timeout.connect(self.apply_motion_step)
+        self.motion_anim = QVariantAnimation(self)
+        self.motion_anim.valueChanged.connect(self.apply_motion_progress)
 
         self.motion_duration = 5000  # default duration (ms), can be overridden per image
         self._current_pixmap = QPixmap()
@@ -51,7 +51,7 @@ class ImageViewer(QGraphicsView):
             return
 
         self.motion_timer.stop()
-        self.motion_anim_timer.stop()
+        self.motion_anim.stop()
 
         self._current_pixmap = pixmap
         self.pixmap_item.setPixmap(pixmap)
@@ -60,8 +60,8 @@ class ImageViewer(QGraphicsView):
         self.resetTransform()
         self._fit_pixmap()
 
-        if duration:
-            self.motion_duration = duration * 1000
+        if duration is not None:
+            self.motion_duration = max(0, int(duration * 1000))
 
         if self.motion_enabled:
             self.motion_timer.start(50)  # slight delay to allow layout
@@ -101,18 +101,18 @@ class ImageViewer(QGraphicsView):
         self.total_dx = total_dx
         self.total_dy = total_dy
 
-        self.steps = 100
-        interval = max(10, self.motion_duration // self.steps)
-        self.step = 0
-
-        self.motion_anim_timer.start(interval)
-
-    def apply_motion_step(self):
-        if self.step > self.steps:
-            self.motion_anim_timer.stop()
+        if self.motion_duration <= 0:
             return
 
-        progress = self.step / self.steps if self.steps else 1.0
+        self.motion_anim.stop()
+        self.motion_anim.setStartValue(0.0)
+        self.motion_anim.setEndValue(1.0)
+        self.motion_anim.setDuration(self.motion_duration)
+        self.motion_anim.start()
+
+    def apply_motion_progress(self, progress):
+        progress = max(0.0, min(1.0, float(progress)))
+
         current_scale = self.start_scale + (self.end_scale - self.start_scale) * progress
         current_dx = self.total_dx * progress
         current_dy = self.total_dy * progress
@@ -122,7 +122,6 @@ class ImageViewer(QGraphicsView):
         transform.translate(current_dx, current_dy)
 
         self.setTransform(transform)
-        self.step += 1
 
     def _fit_pixmap(self):
         """Scale the current image so it fits the available viewport."""
