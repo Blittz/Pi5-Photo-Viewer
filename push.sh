@@ -20,7 +20,7 @@ if [[ $confirm != "y" ]]; then
 fi
 
 # Stage all changes
-git add .
+git add -A
 
 # Commit
 git commit -m "$msg"
