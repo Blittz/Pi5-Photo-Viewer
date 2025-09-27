@@ -1,7 +1,12 @@
 import random
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QRectF, QPointF
 from PyQt6.QtGui import QPixmap, QTransform, QPainter
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
+from PyQt6.QtWidgets import (
+    QGraphicsView,
+    QGraphicsScene,
+    QGraphicsPixmapItem,
+    QSizePolicy,
+)
 
 
 class ImageViewer(QGraphicsView):
@@ -19,24 +24,34 @@ class ImageViewer(QGraphicsView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFrameShape(QGraphicsView.Shape.NoFrame)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
 
         self.motion_timer = QTimer(self)
         self.motion_timer.setSingleShot(True)
         self.motion_timer.timeout.connect(self.start_motion)
 
         self.motion_duration = 5000  # default duration (ms), can be overridden per image
+        self._current_pixmap = QPixmap()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        if not self._current_pixmap.isNull():
+            self._fit_pixmap()
 
     def set_image(self, image_path, duration=None):
         pixmap = QPixmap(image_path)
+        if pixmap.isNull():
+            return
+
+        self._current_pixmap = pixmap
         self.pixmap_item.setPixmap(pixmap)
 
         self.scene.setSceneRect(QRectF(pixmap.rect()))
         self.resetTransform()
-        self.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self._fit_pixmap()
 
         if duration:
             self.motion_duration = duration * 1000
@@ -49,7 +64,7 @@ class ImageViewer(QGraphicsView):
             return
 
         self.resetTransform()
-        self.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self._fit_pixmap()
 
         start_scale = 1.0
         end_scale = 1.1
@@ -95,3 +110,10 @@ class ImageViewer(QGraphicsView):
 
         self.setTransform(transform)
         self.step += 1
+
+    def _fit_pixmap(self):
+        """Scale the current image so it fits the available viewport."""
+        if self.pixmap_item.pixmap().isNull():
+            return
+
+        self.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)

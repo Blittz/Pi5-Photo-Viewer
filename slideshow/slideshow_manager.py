@@ -1,6 +1,6 @@
 import os
 import random
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
 from .image_viewer import ImageViewer
 
@@ -37,6 +37,10 @@ class SlideshowManager(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.viewer)
         self.setLayout(layout)
+
+        # Enable the slideshow window to receive keyboard focus so it can
+        # react to shortcut keys such as Escape and F11.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self.load_images()
         self.start_slideshow()
@@ -104,3 +108,24 @@ class SlideshowManager(QWidget):
         self.load_images()
         self.current_index = 0
         self.start_slideshow()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.close()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_F11:
+            if self.isFullScreen():
+                self.showNormal()
+            else:
+                self.showFullScreen()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def closeEvent(self, event):
+        # Stop timers when the slideshow window closes to ensure there are no
+        # lingering updates running in the background.
+        self.slideshow_timer.stop()
+        self.refresh_timer.stop()
+        super().closeEvent(event)
