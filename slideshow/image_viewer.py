@@ -198,6 +198,7 @@ class ImageViewer(QGraphicsView):
         if not self.overlay_label.isVisible():
             self.overlay_label.setVisible(True)
 
+        self._update_overlay_font_size(max_width)
         self.overlay_label.setMaximumWidth(max_width)
         self.overlay_label.adjustSize()
         # Enforce the computed width in case adjustSize shrinks it.
@@ -235,3 +236,34 @@ class ImageViewer(QGraphicsView):
 
         transform = self.transform()
         return transform.mapRect(self.pixmap_item.boundingRect())
+
+    def _update_overlay_font_size(self, max_width):
+        """Scale the overlay font relative to the configured width."""
+
+        if max_width <= 0:
+            return
+
+        font = self.overlay_label.font()
+
+        min_slider = 10.0
+        max_slider = 100.0
+        clamped_percentage = max(min_slider, min(self.overlay_percentage, max_slider))
+        slider_ratio = (clamped_percentage - min_slider) / (max_slider - min_slider)
+
+        min_font_size = 12.0
+        max_font_size = 36.0
+
+        new_font_size = min_font_size + slider_ratio * (max_font_size - min_font_size)
+
+        # Prevent the font from growing larger than the available width can support.
+        max_supported_size = max_width / 12.0
+        if max_supported_size > 0:
+            new_font_size = min(new_font_size, max_supported_size)
+
+        current_size = font.pointSizeF()
+        if current_size <= 0:
+            current_size = font.pointSize()
+
+        if not math.isclose(current_size, new_font_size, rel_tol=0.05):
+            font.setPointSizeF(new_font_size)
+            self.overlay_label.setFont(font)
