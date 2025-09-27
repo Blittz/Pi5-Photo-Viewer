@@ -33,8 +33,12 @@ class ImageViewer(QGraphicsView):
         self.motion_timer.setSingleShot(True)
         self.motion_timer.timeout.connect(self.start_motion)
 
+        self.motion_anim_timer = QTimer(self)
+        self.motion_anim_timer.timeout.connect(self.apply_motion_step)
+
         self.motion_duration = 5000  # default duration (ms), can be overridden per image
         self._current_pixmap = QPixmap()
+        self.base_transform = QTransform()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -45,6 +49,9 @@ class ImageViewer(QGraphicsView):
         pixmap = QPixmap(image_path)
         if pixmap.isNull():
             return
+
+        self.motion_timer.stop()
+        self.motion_anim_timer.stop()
 
         self._current_pixmap = pixmap
         self.pixmap_item.setPixmap(pixmap)
@@ -66,47 +73,53 @@ class ImageViewer(QGraphicsView):
         self.resetTransform()
         self._fit_pixmap()
 
-        start_scale = 1.0
-        end_scale = 1.1
+        self.base_transform = self.transform()
+
+        self.start_scale = 1.0
+        self.end_scale = random.uniform(1.08, 1.15)
 
         direction = random.choice(['up', 'down', 'left', 'right', 'diag'])
 
-        dx = dy = 0
-        pan_amount = 50
+        pan_ratio = 0.05
+        pixmap_rect = self.pixmap_item.boundingRect()
+        total_dx = total_dy = 0.0
+
+        if direction == 'left':
+            total_dx = -pixmap_rect.width() * pan_ratio
+        elif direction == 'right':
+            total_dx = pixmap_rect.width() * pan_ratio
+        elif direction == 'diag':
+            total_dx = pixmap_rect.width() * pan_ratio * random.choice([-1, 1])
 
         if direction == 'up':
-            dy = -pan_amount
+            total_dy = -pixmap_rect.height() * pan_ratio
         elif direction == 'down':
-            dy = pan_amount
-        elif direction == 'left':
-            dx = -pan_amount
-        elif direction == 'right':
-            dx = pan_amount
+            total_dy = pixmap_rect.height() * pan_ratio
         elif direction == 'diag':
-            dx = dy = pan_amount
+            total_dy = pixmap_rect.height() * pan_ratio * random.choice([-1, 1])
 
-        steps = 100
-        interval = self.motion_duration // steps
+        self.total_dx = total_dx
+        self.total_dy = total_dy
+
+        self.steps = 100
+        interval = max(10, self.motion_duration // self.steps)
         self.step = 0
-        self.steps = steps
-        self.dx = dx / steps
-        self.dy = dy / steps
-        self.scale_step = (end_scale - start_scale) / steps
-        self.current_scale = start_scale
 
-        self.motion_anim_timer = QTimer(self)
-        self.motion_anim_timer.timeout.connect(self.apply_motion_step)
         self.motion_anim_timer.start(interval)
 
     def apply_motion_step(self):
-        if self.step >= self.steps:
+        if self.step > self.steps:
             self.motion_anim_timer.stop()
             return
 
-        self.current_scale += self.scale_step
-        transform = QTransform()
-        transform.translate(self.dx * self.step, self.dy * self.step)
-        transform.scale(self.current_scale, self.current_scale)
+        progress = self.step / self.steps if self.steps else 1.0
+        current_scale = self.start_scale + (self.end_scale - self.start_scale) * progress
+        current_dx = self.total_dx * progress
+        current_dy = self.total_dy * progress
+
+        transform = QTransform(self.base_transform)
+        transform.scale(current_scale, current_scale)
+        transform.translate(current_dx, current_dy)
 
         self.setTransform(transform)
         self.step += 1
@@ -117,3 +130,4 @@ class ImageViewer(QGraphicsView):
             return
 
         self.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
+        self.base_transform = self.transform()
