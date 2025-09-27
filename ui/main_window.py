@@ -84,6 +84,24 @@ class MainWindow(QWidget):
 
         layout.addLayout(duration_layout)
 
+        # Overlay size slider
+        overlay_layout = QHBoxLayout()
+        overlay_label = QLabel("Overlay Width (% of image):")
+        self.overlay_slider = QSlider(Qt.Orientation.Horizontal)
+        self.overlay_slider.setRange(10, 100)
+        self.overlay_slider.setValue(40)
+        self.overlay_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.overlay_slider.setTickInterval(5)
+        self.overlay_slider.valueChanged.connect(self.update_overlay_label)
+
+        self.overlay_display = QLabel()
+        self.update_overlay_label()
+        overlay_layout.addWidget(overlay_label)
+        overlay_layout.addWidget(self.overlay_slider)
+        overlay_layout.addWidget(self.overlay_display)
+
+        layout.addLayout(overlay_layout)
+
         # Start slideshow
         start_btn = QPushButton("Start Slideshow")
         start_btn.clicked.connect(self.start_slideshow)
@@ -133,12 +151,14 @@ class MainWindow(QWidget):
         shuffle = self.shuffle_checkbox.isChecked()
         duration = self.duration_slider.value()
         motion_enabled = self.motion_checkbox.isChecked()
+        overlay_percentage = self.overlay_slider.value()
 
         self.slideshow = SlideshowManager(
             self.folders,
             shuffle=shuffle,
             duration=duration,
-            motion_enabled=motion_enabled
+            motion_enabled=motion_enabled,
+            overlay_percentage=overlay_percentage,
         )
         self.slideshow.showFullScreen()
 
@@ -149,10 +169,13 @@ class MainWindow(QWidget):
         shuffle = data.get("shuffle", True)
         motion = data.get("motion", True)
         duration = data.get("duration", 5)
+        overlay_percentage = data.get("overlay_percentage", 40)
 
         self.shuffle_checkbox.setChecked(shuffle)
         self.motion_checkbox.setChecked(motion)
         self.duration_slider.setValue(duration)
+        self.overlay_slider.setValue(overlay_percentage)
+        self.update_overlay_label()
 
         self.folder_list.clear()
         for folder in self.folders:
@@ -165,10 +188,14 @@ class MainWindow(QWidget):
             "folders": self.folders,
             "shuffle": self.shuffle_checkbox.isChecked(),
             "motion": self.motion_checkbox.isChecked(),
-            "duration": self.duration_slider.value()
+            "duration": self.duration_slider.value(),
+            "overlay_percentage": self.overlay_slider.value(),
         }
         save_json_settings(data)
 
     def closeEvent(self, event):
         self.save_settings()
         super().closeEvent(event)
+
+    def update_overlay_label(self):
+        self.overlay_display.setText(f"{self.overlay_slider.value()}%")

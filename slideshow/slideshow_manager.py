@@ -20,18 +20,22 @@ def get_all_images_from_folders(folders):
 
 
 class SlideshowManager(QWidget):
-    def __init__(self, folders, shuffle=False, duration=5, motion_enabled=True):
+    def __init__(self, folders, shuffle=False, duration=5, motion_enabled=True, overlay_percentage=40):
         super().__init__()
 
         self.folders = folders
         self.shuffle = shuffle
         self.duration = duration
         self.motion_enabled = motion_enabled
+        self.overlay_percentage = overlay_percentage
         self.current_index = 0
         self.current_image_path = None
         self.images = []
 
-        self.viewer = ImageViewer(motion_enabled=self.motion_enabled)
+        self.viewer = ImageViewer(
+            motion_enabled=self.motion_enabled,
+            overlay_percentage=self.overlay_percentage,
+        )
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)

@@ -14,10 +14,11 @@ from PyQt6.QtWidgets import (
 
 
 class ImageViewer(QGraphicsView):
-    def __init__(self, motion_enabled=True):
+    def __init__(self, motion_enabled=True, overlay_percentage=40):
         super().__init__()
 
         self.motion_enabled = motion_enabled
+        self.overlay_percentage = float(overlay_percentage)
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
         self.setBackgroundBrush(Qt.GlobalColor.black)
@@ -147,6 +148,7 @@ class ImageViewer(QGraphicsView):
         transform.translate(current_dx, current_dy)
 
         self.setTransform(transform)
+        self._update_overlay_position()
 
     def _fit_pixmap(self):
         """Scale the current image so it fits the available viewport."""
@@ -180,11 +182,18 @@ class ImageViewer(QGraphicsView):
 
         self.apply_motion_progress(0.0)
 
+    def set_overlay_percentage(self, percentage):
+        try:
+            self.overlay_percentage = max(0.0, float(percentage))
+        except (TypeError, ValueError):
+            return
+        self._update_overlay_position()
+
     def _update_overlay_position(self):
         if not self.overlay_label.isVisible():
             return
 
-        max_width = max(0, self.viewport().width() - self.overlay_margin * 2)
+        max_width = self._calculate_overlay_max_width()
         self.overlay_label.setMaximumWidth(max_width)
         self.overlay_label.adjustSize()
 
@@ -196,3 +205,27 @@ class ImageViewer(QGraphicsView):
 
         # Position relative to the widget coordinates.
         self.overlay_label.move(int(x), int(y))
+
+    def _calculate_overlay_max_width(self):
+        if self.overlay_percentage <= 0:
+            return 0
+
+        image_rect = self._get_displayed_pixmap_rect()
+        if image_rect.isNull():
+            return 0
+
+        image_width = image_rect.width()
+        max_width_by_image = int(image_width * (self.overlay_percentage / 100.0))
+
+        viewport_limit = max(0, self.viewport().width() - self.overlay_margin * 2)
+        if viewport_limit <= 0:
+            return max(0, max_width_by_image)
+
+        return max(0, min(max_width_by_image, viewport_limit))
+
+    def _get_displayed_pixmap_rect(self):
+        if self.pixmap_item.pixmap().isNull():
+            return QRectF()
+
+        transform = self.transform()
+        return transform.mapRect(self.pixmap_item.boundingRect())
