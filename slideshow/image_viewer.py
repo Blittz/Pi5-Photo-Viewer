@@ -195,18 +195,13 @@ class ImageViewer(QGraphicsView):
             self.overlay_label.setVisible(False)
             return
 
-<<<<<<< ours
-        max_width = self._calculate_overlay_max_width()
-        self.overlay_label.setMaximumWidth(max_width)
-=======
         if not self.overlay_label.isVisible():
             self.overlay_label.setVisible(True)
 
-        self.overlay_label.setFixedWidth(max_width)
->>>>>>> theirs
+        self.overlay_label.setMaximumWidth(max_width)
         self.overlay_label.adjustSize()
         # Enforce the computed width in case adjustSize shrinks it.
-        if self.overlay_label.width() != max_width:
+        if self.overlay_label.width() > max_width:
             self.overlay_label.resize(max_width, self.overlay_label.height())
 
         label_width = self.overlay_label.width()
@@ -219,12 +214,8 @@ class ImageViewer(QGraphicsView):
         self.overlay_label.move(int(x), int(y))
 
     def _calculate_overlay_max_width(self):
-<<<<<<< ours
         if self.overlay_percentage <= 0:
             return 0
-
-=======
->>>>>>> theirs
         image_rect = self._get_displayed_pixmap_rect()
         if image_rect.isNull():
             return 0
