@@ -17,6 +17,8 @@ class ImageViewer(QGraphicsView):
         self.motion_enabled = motion_enabled
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
+        self.setBackgroundBrush(Qt.GlobalColor.black)
+        self.scene.setBackgroundBrush(Qt.GlobalColor.black)
 
         self.pixmap_item = QGraphicsPixmapItem()
         self.scene.addItem(self.pixmap_item)
