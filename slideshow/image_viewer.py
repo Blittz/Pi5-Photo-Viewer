@@ -1,6 +1,10 @@
 import math
 import random
+<<<<<<< ours
 from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation
+=======
+from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation, QEasingCurve
+>>>>>>> theirs
 from PyQt6.QtGui import QPixmap, QTransform, QPainter
 from PyQt6.QtWidgets import (
     QGraphicsView,
@@ -35,6 +39,10 @@ class ImageViewer(QGraphicsView):
         self.motion_timer.timeout.connect(self.start_motion)
 
         self.motion_anim = QVariantAnimation(self)
+<<<<<<< ours
+=======
+        self.motion_anim.setEasingCurve(QEasingCurve.Type.Linear)
+>>>>>>> theirs
         self.motion_anim.valueChanged.connect(self.apply_motion_progress)
 
         self.motion_duration = 5000  # default duration (ms), can be overridden per image
@@ -88,6 +96,7 @@ class ImageViewer(QGraphicsView):
         pan_angle = random.uniform(0, 2 * math.pi)
         pixmap_rect = self.pixmap_item.boundingRect()
 <<<<<<< ours
+<<<<<<< ours
         total_dx = total_dy = 0.0
 
         if direction == 'left':
@@ -120,6 +129,8 @@ class ImageViewer(QGraphicsView):
         progress = max(0.0, min(1.0, float(progress)))
 
 =======
+=======
+>>>>>>> theirs
 
         self.total_dx = pixmap_rect.width() * pan_ratio * math.cos(pan_angle)
         self.total_dy = pixmap_rect.height() * pan_ratio * math.sin(pan_angle)
@@ -137,6 +148,9 @@ class ImageViewer(QGraphicsView):
     def apply_motion_progress(self, progress):
         progress = max(0.0, min(1.0, float(progress)))
 
+<<<<<<< ours
+>>>>>>> theirs
+=======
 >>>>>>> theirs
         current_scale = self.start_scale + (self.end_scale - self.start_scale) * progress
         current_dx = self.total_dx * progress
