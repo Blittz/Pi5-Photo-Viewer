@@ -84,23 +84,41 @@ class MainWindow(QWidget):
 
         layout.addLayout(duration_layout)
 
-        # Title font size slider
-        title_layout = QHBoxLayout()
-        title_label = QLabel("Title Font Size (pt):")
-        self.title_slider = QSlider(Qt.Orientation.Horizontal)
-        self.title_slider.setRange(12, 48)
-        self.title_slider.setValue(24)
-        self.title_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.title_slider.setTickInterval(2)
-        self.title_slider.valueChanged.connect(self.update_title_label)
+        # Folder name font size slider
+        folder_title_layout = QHBoxLayout()
+        folder_title_label = QLabel("Folder Name Font Size (pt):")
+        self.folder_title_slider = QSlider(Qt.Orientation.Horizontal)
+        self.folder_title_slider.setRange(12, 48)
+        self.folder_title_slider.setValue(24)
+        self.folder_title_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.folder_title_slider.setTickInterval(2)
+        self.folder_title_slider.valueChanged.connect(self.update_folder_title_label)
 
-        self.title_display = QLabel()
-        self.update_title_label()
-        title_layout.addWidget(title_label)
-        title_layout.addWidget(self.title_slider)
-        title_layout.addWidget(self.title_display)
+        self.folder_title_display = QLabel()
+        self.update_folder_title_label()
+        folder_title_layout.addWidget(folder_title_label)
+        folder_title_layout.addWidget(self.folder_title_slider)
+        folder_title_layout.addWidget(self.folder_title_display)
 
-        layout.addLayout(title_layout)
+        layout.addLayout(folder_title_layout)
+
+        # File name font size slider
+        file_title_layout = QHBoxLayout()
+        file_title_label = QLabel("File Name Font Size (pt):")
+        self.file_title_slider = QSlider(Qt.Orientation.Horizontal)
+        self.file_title_slider.setRange(12, 48)
+        self.file_title_slider.setValue(24)
+        self.file_title_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.file_title_slider.setTickInterval(2)
+        self.file_title_slider.valueChanged.connect(self.update_file_title_label)
+
+        self.file_title_display = QLabel()
+        self.update_file_title_label()
+        file_title_layout.addWidget(file_title_label)
+        file_title_layout.addWidget(self.file_title_slider)
+        file_title_layout.addWidget(self.file_title_display)
+
+        layout.addLayout(file_title_layout)
 
         # Start slideshow
         start_btn = QPushButton("Start Slideshow")
@@ -151,14 +169,16 @@ class MainWindow(QWidget):
         shuffle = self.shuffle_checkbox.isChecked()
         duration = self.duration_slider.value()
         motion_enabled = self.motion_checkbox.isChecked()
-        title_font_size = self.title_slider.value()
+        folder_title_font_size = self.folder_title_slider.value()
+        file_title_font_size = self.file_title_slider.value()
 
         self.slideshow = SlideshowManager(
             self.folders,
             shuffle=shuffle,
             duration=duration,
             motion_enabled=motion_enabled,
-            title_font_size=title_font_size,
+            folder_title_font_size=folder_title_font_size,
+            file_title_font_size=file_title_font_size,
         )
         self.slideshow.showFullScreen()
 
@@ -169,19 +189,37 @@ class MainWindow(QWidget):
         shuffle = data.get("shuffle", True)
         motion = data.get("motion", True)
         duration = data.get("duration", 5)
-        title_font_size = data.get("overlay_title_font_size")
-        if title_font_size is None:
+        folder_title_font_size = data.get("overlay_folder_font_size")
+        file_title_font_size = data.get("overlay_file_font_size")
+
+        legacy_title_font_size = data.get("overlay_title_font_size")
+        if legacy_title_font_size is not None:
+            if folder_title_font_size is None:
+                folder_title_font_size = legacy_title_font_size
+            if file_title_font_size is None:
+                file_title_font_size = legacy_title_font_size
+
+        if folder_title_font_size is None or file_title_font_size is None:
             legacy_percentage = data.get("overlay_percentage")
             if legacy_percentage is not None:
-                title_font_size = self.convert_legacy_overlay_percentage(legacy_percentage)
-            else:
-                title_font_size = 24
+                converted = self.convert_legacy_overlay_percentage(legacy_percentage)
+                if folder_title_font_size is None:
+                    folder_title_font_size = converted
+                if file_title_font_size is None:
+                    file_title_font_size = converted
+
+        if folder_title_font_size is None:
+            folder_title_font_size = 24
+        if file_title_font_size is None:
+            file_title_font_size = 24
 
         self.shuffle_checkbox.setChecked(shuffle)
         self.motion_checkbox.setChecked(motion)
         self.duration_slider.setValue(duration)
-        self.title_slider.setValue(int(round(title_font_size)))
-        self.update_title_label()
+        self.folder_title_slider.setValue(int(round(folder_title_font_size)))
+        self.file_title_slider.setValue(int(round(file_title_font_size)))
+        self.update_folder_title_label()
+        self.update_file_title_label()
 
         self.folder_list.clear()
         for folder in self.folders:
@@ -195,7 +233,8 @@ class MainWindow(QWidget):
             "shuffle": self.shuffle_checkbox.isChecked(),
             "motion": self.motion_checkbox.isChecked(),
             "duration": self.duration_slider.value(),
-            "overlay_title_font_size": self.title_slider.value(),
+            "overlay_folder_font_size": self.folder_title_slider.value(),
+            "overlay_file_font_size": self.file_title_slider.value(),
         }
         save_json_settings(data)
 
@@ -203,8 +242,11 @@ class MainWindow(QWidget):
         self.save_settings()
         super().closeEvent(event)
 
-    def update_title_label(self):
-        self.title_display.setText(f"{self.title_slider.value()} pt")
+    def update_folder_title_label(self):
+        self.folder_title_display.setText(f"{self.folder_title_slider.value()} pt")
+
+    def update_file_title_label(self):
+        self.file_title_display.setText(f"{self.file_title_slider.value()} pt")
 
     @staticmethod
     def convert_legacy_overlay_percentage(percentage):

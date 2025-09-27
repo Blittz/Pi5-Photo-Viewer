@@ -20,21 +20,31 @@ def get_all_images_from_folders(folders):
 
 
 class SlideshowManager(QWidget):
-    def __init__(self, folders, shuffle=False, duration=5, motion_enabled=True, title_font_size=24):
+    def __init__(
+        self,
+        folders,
+        shuffle=False,
+        duration=5,
+        motion_enabled=True,
+        folder_title_font_size=24,
+        file_title_font_size=24,
+    ):
         super().__init__()
 
         self.folders = folders
         self.shuffle = shuffle
         self.duration = duration
         self.motion_enabled = motion_enabled
-        self.title_font_size = title_font_size
+        self.folder_title_font_size = folder_title_font_size
+        self.file_title_font_size = file_title_font_size
         self.current_index = 0
         self.current_image_path = None
         self.images = []
 
         self.viewer = ImageViewer(
             motion_enabled=self.motion_enabled,
-            title_font_size=self.title_font_size,
+            folder_title_font_size=self.folder_title_font_size,
+            file_title_font_size=self.file_title_font_size,
         )
 
         layout = QVBoxLayout()

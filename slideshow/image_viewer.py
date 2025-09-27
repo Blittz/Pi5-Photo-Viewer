@@ -10,15 +10,23 @@ from PyQt6.QtWidgets import (
     QGraphicsPixmapItem,
     QSizePolicy,
     QLabel,
+    QWidget,
+    QVBoxLayout,
 )
 
 
 class ImageViewer(QGraphicsView):
-    def __init__(self, motion_enabled=True, title_font_size=24):
+    def __init__(
+        self,
+        motion_enabled=True,
+        folder_title_font_size=24,
+        file_title_font_size=24,
+    ):
         super().__init__()
 
         self.motion_enabled = motion_enabled
-        self.title_font_size = self._sanitize_font_size(title_font_size)
+        self.folder_title_font_size = self._sanitize_font_size(folder_title_font_size)
+        self.file_title_font_size = self._sanitize_font_size(file_title_font_size)
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
         self.setBackgroundBrush(Qt.GlobalColor.black)
@@ -53,15 +61,31 @@ class ImageViewer(QGraphicsView):
         self.total_dy = 0.0
         self.motion_prepared = False
 
-        self.overlay_label = QLabel(self)
-        self.overlay_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.overlay_label.setStyleSheet(
-            "color: white; background-color: rgba(0, 0, 0, 180);"
-            "padding: 6px 14px; border-radius: 12px;"
+        self.overlay_widget = QWidget(self)
+        self.overlay_widget.setVisible(False)
+        self.overlay_widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.overlay_widget.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 180);"
+            "border-radius: 12px;"
         )
-        self.overlay_label.setWordWrap(True)
-        self.overlay_label.setVisible(False)
-        self.overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+        overlay_layout = QVBoxLayout(self.overlay_widget)
+        overlay_layout.setContentsMargins(14, 10, 14, 12)
+        overlay_layout.setSpacing(2)
+
+        self.folder_label = QLabel()
+        self.folder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.folder_label.setStyleSheet("color: white;")
+        self.folder_label.setWordWrap(True)
+
+        self.file_label = QLabel()
+        self.file_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.file_label.setStyleSheet("color: white;")
+        self.file_label.setWordWrap(True)
+
+        overlay_layout.addWidget(self.folder_label)
+        overlay_layout.addWidget(self.file_label)
+
         self.overlay_margin = 20
 
     def resizeEvent(self, event):
@@ -73,7 +97,7 @@ class ImageViewer(QGraphicsView):
     def set_image(self, image_path, duration=None):
         pixmap = QPixmap(image_path)
         if pixmap.isNull():
-            self.overlay_label.setVisible(False)
+            self.overlay_widget.setVisible(False)
             return
 
         self.motion_timer.stop()
@@ -88,11 +112,23 @@ class ImageViewer(QGraphicsView):
 
         folder_name = os.path.basename(os.path.dirname(image_path))
         file_name = os.path.basename(image_path)
-        overlay_text = f"{folder_name}\n{file_name}" if folder_name else file_name
-        self.overlay_label.setText(overlay_text)
-        self.overlay_label.setVisible(True)
-        self.overlay_label.raise_()
-        self._update_overlay_position()
+
+        has_folder = bool(folder_name)
+        has_file = bool(file_name)
+
+        self.folder_label.setVisible(has_folder)
+        self.folder_label.setText(folder_name if has_folder else "")
+
+        self.file_label.setVisible(has_file)
+        self.file_label.setText(file_name if has_file else "")
+
+        should_show_overlay = has_folder or has_file
+        self.overlay_widget.setVisible(should_show_overlay)
+
+        if should_show_overlay:
+            self.overlay_widget.raise_()
+            self._apply_title_font_sizes()
+            self._update_overlay_position()
 
         if self.motion_enabled:
             self._prepare_motion_parameters()
@@ -181,38 +217,41 @@ class ImageViewer(QGraphicsView):
 
         self.apply_motion_progress(0.0)
 
-    def set_title_font_size(self, font_size):
+    def set_folder_title_font_size(self, font_size):
         sanitized = self._sanitize_font_size(font_size)
-        if math.isclose(self.title_font_size, sanitized):
+        if math.isclose(self.folder_title_font_size, sanitized):
             return
-        self.title_font_size = sanitized
+        self.folder_title_font_size = sanitized
+        self._update_overlay_position()
+
+    def set_file_title_font_size(self, font_size):
+        sanitized = self._sanitize_font_size(font_size)
+        if math.isclose(self.file_title_font_size, sanitized):
+            return
+        self.file_title_font_size = sanitized
         self._update_overlay_position()
 
     def _update_overlay_position(self):
-        if self.overlay_label.text() == "":
-            self.overlay_label.setVisible(False)
+        if not self.overlay_widget.isVisible():
             return
 
         max_width = self._calculate_title_max_width()
         if max_width <= 0:
-            self.overlay_label.setVisible(False)
+            self.overlay_widget.setVisible(False)
             return
 
-        if not self.overlay_label.isVisible():
-            self.overlay_label.setVisible(True)
+        self._apply_title_font_sizes()
+        self.overlay_widget.setMaximumWidth(max_width)
+        self.overlay_widget.adjustSize()
 
-        self.overlay_label.setMaximumWidth(max_width)
-        self._apply_title_font_size()
-        self.overlay_label.adjustSize()
+        widget_width = self.overlay_widget.width()
+        widget_height = self.overlay_widget.height()
 
-        label_width = self.overlay_label.width()
-        label_height = self.overlay_label.height()
-
-        x = max(self.overlay_margin, (self.viewport().width() - label_width) // 2)
-        y = self.viewport().height() - label_height - self.overlay_margin
+        x = max(self.overlay_margin, (self.viewport().width() - widget_width) // 2)
+        y = self.viewport().height() - widget_height - self.overlay_margin
 
         # Position relative to the widget coordinates.
-        self.overlay_label.move(int(x), int(y))
+        self.overlay_widget.move(int(x), int(y))
 
     def _calculate_title_max_width(self):
         viewport_limit = max(0, self.viewport().width() - self.overlay_margin * 2)
@@ -233,10 +272,16 @@ class ImageViewer(QGraphicsView):
         transform = self.transform()
         return transform.mapRect(self.pixmap_item.boundingRect())
 
-    def _apply_title_font_size(self):
-        font = self.overlay_label.font()
-        font.setPointSizeF(self.title_font_size)
-        self.overlay_label.setFont(font)
+    def _apply_title_font_sizes(self):
+        if self.folder_label.isVisible():
+            folder_font = self.folder_label.font()
+            folder_font.setPointSizeF(self.folder_title_font_size)
+            self.folder_label.setFont(folder_font)
+
+        if self.file_label.isVisible():
+            file_font = self.file_label.font()
+            file_font.setPointSizeF(self.file_title_font_size)
+            self.file_label.setFont(file_font)
 
     @staticmethod
     def _sanitize_font_size(font_size):
