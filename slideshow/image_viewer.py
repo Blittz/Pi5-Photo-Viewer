@@ -1,3 +1,4 @@
+import math
 import random
 from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation
 from PyQt6.QtGui import QPixmap, QTransform, QPainter
@@ -75,13 +76,18 @@ class ImageViewer(QGraphicsView):
 
         self.base_transform = self.transform()
 
-        self.start_scale = 1.0
-        self.end_scale = random.uniform(1.08, 1.15)
+        zoom_in = random.choice([True, False])
+        if zoom_in:
+            self.start_scale = 1.0
+            self.end_scale = random.uniform(1.08, 1.2)
+        else:
+            self.start_scale = random.uniform(1.08, 1.2)
+            self.end_scale = 1.0
 
-        direction = random.choice(['up', 'down', 'left', 'right', 'diag'])
-
-        pan_ratio = 0.05
+        pan_ratio = random.uniform(0.02, 0.08)
+        pan_angle = random.uniform(0, 2 * math.pi)
         pixmap_rect = self.pixmap_item.boundingRect()
+<<<<<<< ours
         total_dx = total_dy = 0.0
 
         if direction == 'left':
@@ -113,6 +119,25 @@ class ImageViewer(QGraphicsView):
     def apply_motion_progress(self, progress):
         progress = max(0.0, min(1.0, float(progress)))
 
+=======
+
+        self.total_dx = pixmap_rect.width() * pan_ratio * math.cos(pan_angle)
+        self.total_dy = pixmap_rect.height() * pan_ratio * math.sin(pan_angle)
+
+        if self.motion_duration <= 0:
+            return
+
+        self.motion_anim.stop()
+        self.motion_anim.setStartValue(0.0)
+        self.motion_anim.setEndValue(1.0)
+        self.motion_anim.setDuration(self.motion_duration)
+        self.apply_motion_progress(0.0)
+        self.motion_anim.start()
+
+    def apply_motion_progress(self, progress):
+        progress = max(0.0, min(1.0, float(progress)))
+
+>>>>>>> theirs
         current_scale = self.start_scale + (self.end_scale - self.start_scale) * progress
         current_dx = self.total_dx * progress
         current_dy = self.total_dy * progress
