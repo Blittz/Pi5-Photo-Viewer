@@ -2,9 +2,13 @@ import os
 import random
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
-from .image_viewer import ImageViewer
+from .image_viewer import ImageViewer, SUPPORTED_TRANSITIONS
 
 SUPPORTED_IMAGE_FORMATS = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp')
+
+LEGACY_TRANSITION_ALIASES = {
+    "slide": ["slide-horizontal", "slide-vertical"],
+}
 
 
 def get_all_images_from_folders(folders):
@@ -40,17 +44,15 @@ class SlideshowManager(QWidget):
         self.current_image_path = None
         self.images = []
         if transitions is None:
-            self.transitions = ["crossfade"]
+            self.transitions = list(SUPPORTED_TRANSITIONS)
         else:
-            valid_transitions = {"crossfade", "slide", "zoom"}
-            self.transitions = [
-                t for t in transitions if isinstance(t, str) and t in valid_transitions
-            ]
+            self.transitions = self._normalize_transitions(transitions)
 
         self.viewer = ImageViewer(
             motion_enabled=self.motion_enabled,
             title_font_size=self.title_font_size,
         )
+        self.viewer.set_available_transitions(self.transitions)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -156,3 +158,26 @@ class SlideshowManager(QWidget):
         self.slideshow_timer.stop()
         self.refresh_timer.stop()
         super().closeEvent(event)
+
+    @staticmethod
+    def _normalize_transitions(transitions):
+        if not transitions:
+            return []
+
+        if isinstance(transitions, str):
+            transitions = [transitions]
+
+        supported_set = set(SUPPORTED_TRANSITIONS)
+        normalized = []
+        for transition in transitions:
+            if not isinstance(transition, str):
+                continue
+            transition = transition.strip().lower()
+            if transition in supported_set:
+                if transition not in normalized:
+                    normalized.append(transition)
+            elif transition in LEGACY_TRANSITION_ALIASES:
+                for alias in LEGACY_TRANSITION_ALIASES[transition]:
+                    if alias in supported_set and alias not in normalized:
+                        normalized.append(alias)
+        return normalized

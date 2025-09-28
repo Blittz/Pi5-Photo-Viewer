@@ -1,6 +1,6 @@
 {
     "folders": [
-        "/home/blittz/jarvis/photos/Discord"
+        "/home/blittz/jarvis/photos/Google Photos/Ellie Sak Graduation 2025"
     ],
     "shuffle": true,
     "motion": true,
@@ -8,7 +8,11 @@
     "overlay_title_font_size": 24,
     "transitions": [
         "crossfade",
-        "slide",
-        "zoom"
+        "slide-horizontal",
+        "slide-vertical",
+        "zoom",
+        "carousel",
+        "mosaic",
+        "pixelate"
     ]
 }

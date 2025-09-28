@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton, QLabel, QListWidget, QListWidgetItem,
-    QFileDialog, QHBoxLayout, QCheckBox, QSlider
+    QFileDialog, QHBoxLayout, QCheckBox, QSlider, QGridLayout
 )
 from PyQt6.QtCore import Qt
 from slideshow.slideshow_manager import SlideshowManager
@@ -12,9 +12,17 @@ SETTINGS_PATH = "settings.json"
 
 TRANSITION_OPTIONS = [
     ("Crossfade", "crossfade"),
-    ("Slide", "slide"),
+    ("Slide (Horizontal)", "slide-horizontal"),
+    ("Slide (Vertical)", "slide-vertical"),
     ("Zoom", "zoom"),
+    ("Carousel", "carousel"),
+    ("Mosaic", "mosaic"),
+    ("Pixelate", "pixelate"),
 ]
+
+LEGACY_TRANSITION_ALIASES = {
+    "slide": ["slide-horizontal", "slide-vertical"],
+}
 
 def load_json_settings():
     try:
@@ -75,13 +83,15 @@ class MainWindow(QWidget):
 
         # Transition selection
         layout.addWidget(QLabel("Enabled Transitions:"))
-        transitions_layout = QHBoxLayout()
+        transitions_layout = QGridLayout()
         self.transition_checkboxes = {}
-        for label_text, key in TRANSITION_OPTIONS:
+        for index, (label_text, key) in enumerate(TRANSITION_OPTIONS):
             checkbox = QCheckBox(label_text)
             checkbox.setChecked(True)
             self.transition_checkboxes[key] = checkbox
-            transitions_layout.addWidget(checkbox)
+            row = index // 3
+            column = index % 3
+            transitions_layout.addWidget(checkbox, row, column)
         layout.addLayout(transitions_layout)
 
         # Duration slider
@@ -191,7 +201,7 @@ class MainWindow(QWidget):
         motion = data.get("motion", True)
         duration = data.get("duration", 5)
         title_font_size = data.get("overlay_title_font_size")
-        saved_transitions = data.get("transitions")
+        saved_transitions = self.normalize_transition_keys(data.get("transitions"))
         if title_font_size is None:
             legacy_percentage = data.get("overlay_percentage")
             if legacy_percentage is not None:
@@ -199,7 +209,7 @@ class MainWindow(QWidget):
             else:
                 title_font_size = 24
 
-        if saved_transitions is None:
+        if not saved_transitions:
             saved_transitions = [key for _, key in TRANSITION_OPTIONS]
 
         self.shuffle_checkbox.setChecked(shuffle)
@@ -224,9 +234,9 @@ class MainWindow(QWidget):
             "motion": self.motion_checkbox.isChecked(),
             "duration": self.duration_slider.value(),
             "overlay_title_font_size": self.title_slider.value(),
-            "transitions": [
+            "transitions": self.normalize_transition_keys([
                 key for key, checkbox in self.transition_checkboxes.items() if checkbox.isChecked()
-            ],
+            ]),
         }
         save_json_settings(data)
 
@@ -252,3 +262,26 @@ class MainWindow(QWidget):
         clamped = max(min_slider, min(value, max_slider))
         ratio = (clamped - min_slider) / (max_slider - min_slider)
         return min_font + ratio * (max_font - min_font)
+
+    @staticmethod
+    def normalize_transition_keys(keys):
+        if not keys:
+            return []
+
+        if isinstance(keys, str):
+            keys = [keys]
+
+        valid_keys = {key for _, key in TRANSITION_OPTIONS}
+        normalized = []
+        for key in keys:
+            if not isinstance(key, str):
+                continue
+            key = key.strip().lower()
+            if key in valid_keys:
+                if key not in normalized:
+                    normalized.append(key)
+            elif key in LEGACY_TRANSITION_ALIASES:
+                for alias in LEGACY_TRANSITION_ALIASES[key]:
+                    if alias not in normalized:
+                        normalized.append(alias)
+        return normalized

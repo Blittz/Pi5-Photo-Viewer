@@ -13,6 +13,18 @@ from PyQt6.QtWidgets import (
     QLabel,
 )
 
+SUPPORTED_TRANSITIONS = [
+    "crossfade",
+    "slide-horizontal",
+    "slide-vertical",
+    "zoom",
+    "carousel",
+    "mosaic",
+    "pixelate",
+]
+
+SUPPORTED_TRANSITIONS_SET = set(SUPPORTED_TRANSITIONS)
+
 
 class ImageViewer(QGraphicsView):
     def __init__(self, motion_enabled=True, title_font_size=24):
@@ -72,15 +84,7 @@ class ImageViewer(QGraphicsView):
         self.transition_data = {}
         self.transition_tiles = []
         self.incoming_pixmap = QPixmap()
-        self.available_transitions = [
-            "crossfade",
-            "slide-horizontal",
-            "slide-vertical",
-            "zoom",
-            "carousel",
-            "mosaic",
-            "pixelate",
-        ]
+        self.available_transitions = list(SUPPORTED_TRANSITIONS)
 
         self.overlay_label = QLabel(self)
         self.overlay_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -92,6 +96,8 @@ class ImageViewer(QGraphicsView):
         self.overlay_label.setVisible(False)
         self.overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.overlay_margin = 20
+
+        self.overlay_label.setText("")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -119,6 +125,12 @@ class ImageViewer(QGraphicsView):
         self.overlay_label.setVisible(True)
         self.overlay_label.raise_()
 
+        requested_transition = None
+        if isinstance(transition, str):
+            trimmed = transition.strip().lower()
+            if trimmed in SUPPORTED_TRANSITIONS_SET:
+                requested_transition = trimmed
+
         if self.pixmap_item.pixmap().isNull() or self._current_pixmap.isNull():
             self._apply_pixmap_immediately(pixmap)
             return
@@ -128,8 +140,31 @@ class ImageViewer(QGraphicsView):
             self._apply_pixmap_immediately(pixmap)
             return
 
+        if requested_transition is None:
+            if not self.available_transitions:
+                self._apply_pixmap_immediately(pixmap)
+                return
+            requested_transition = self._choose_transition()
+
         self.incoming_pixmap = pixmap
-        self._start_transition()
+        self._start_transition(requested_transition)
+
+    def set_available_transitions(self, transitions):
+        if transitions is None:
+            self.available_transitions = list(SUPPORTED_TRANSITIONS)
+            return
+
+        if isinstance(transitions, str):
+            transitions = [transitions]
+
+        filtered = []
+        for transition in transitions:
+            if not isinstance(transition, str):
+                continue
+            trimmed = transition.strip().lower()
+            if trimmed in SUPPORTED_TRANSITIONS_SET and trimmed not in filtered:
+                filtered.append(trimmed)
+        self.available_transitions = filtered
 
     def _apply_pixmap_immediately(self, pixmap):
         self._reset_transition_items()
@@ -149,9 +184,11 @@ class ImageViewer(QGraphicsView):
         else:
             self.motion_prepared = False
 
-    def _start_transition(self):
+    def _start_transition(self, transition_type):
         self.transition_active = True
-        self.transition_type = self._choose_transition()
+        if transition_type not in SUPPORTED_TRANSITIONS_SET:
+            transition_type = self._choose_transition()
+        self.transition_type = transition_type
         self.transition_data = {}
 
         old_pixmap = self.pixmap_item.pixmap()
