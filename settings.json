@@ -1,11 +1,14 @@
 {
     "folders": [
-        "/home/blittz/jarvis/photos/~testupdate",
-        "/home/blittz/jarvis/photos/Greybeard"
+        "/home/blittz/jarvis/photos/Discord"
     ],
     "shuffle": true,
     "motion": true,
-    "duration": 5,
-    "overlay_folder_font_size": 17,
-    "overlay_file_font_size": 40
+    "duration": 10,
+    "overlay_title_font_size": 24,
+    "transitions": [
+        "crossfade",
+        "slide",
+        "zoom"
+    ]
 }

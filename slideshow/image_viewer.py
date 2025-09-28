@@ -10,30 +10,32 @@ from PyQt6.QtWidgets import (
     QGraphicsPixmapItem,
     QSizePolicy,
     QLabel,
-    QWidget,
-    QVBoxLayout,
 )
 
 
 class ImageViewer(QGraphicsView):
-    def __init__(
-        self,
-        motion_enabled=True,
-        folder_title_font_size=24,
-        file_title_font_size=24,
-    ):
+    def __init__(self, motion_enabled=True, title_font_size=24):
         super().__init__()
 
         self.motion_enabled = motion_enabled
-        self.folder_title_font_size = self._sanitize_font_size(folder_title_font_size)
-        self.file_title_font_size = self._sanitize_font_size(file_title_font_size)
+        self.title_font_size = self._sanitize_font_size(title_font_size)
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
         self.setBackgroundBrush(Qt.GlobalColor.black)
         self.scene.setBackgroundBrush(Qt.GlobalColor.black)
 
         self.pixmap_item = QGraphicsPixmapItem()
+        self.pixmap_item.setTransformationMode(
+            Qt.TransformationMode.SmoothTransformation
+        )
         self.scene.addItem(self.pixmap_item)
+
+        self.transition_item = QGraphicsPixmapItem()
+        self.transition_item.setTransformationMode(
+            Qt.TransformationMode.SmoothTransformation
+        )
+        self.transition_item.setVisible(False)
+        self.scene.addItem(self.transition_item)
 
         self.setRenderHints(self.renderHints() | QPainter.RenderHint.SmoothPixmapTransform)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -52,6 +54,12 @@ class ImageViewer(QGraphicsView):
         self.motion_anim.setEasingCurve(QEasingCurve.Type.Linear)
         self.motion_anim.valueChanged.connect(self.apply_motion_progress)
 
+        self.transition_anim = QVariantAnimation(self)
+        self.transition_anim.valueChanged.connect(self._apply_transition_progress)
+        self.transition_anim.finished.connect(self._finalize_transition)
+        self.transition_anim.setDuration(600)
+        self.active_transition = None
+
         self.motion_duration = 5000  # default duration (ms), can be overridden per image
         self._current_pixmap = QPixmap()
         self.base_transform = QTransform()
@@ -61,31 +69,15 @@ class ImageViewer(QGraphicsView):
         self.total_dy = 0.0
         self.motion_prepared = False
 
-        self.overlay_widget = QWidget(self)
-        self.overlay_widget.setVisible(False)
-        self.overlay_widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.overlay_widget.setStyleSheet(
-            "background-color: rgba(0, 0, 0, 180);"
-            "border-radius: 12px;"
+        self.overlay_label = QLabel(self)
+        self.overlay_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.overlay_label.setStyleSheet(
+            "color: white; background-color: rgba(0, 0, 0, 180);"
+            "padding: 6px 14px; border-radius: 12px;"
         )
-
-        overlay_layout = QVBoxLayout(self.overlay_widget)
-        overlay_layout.setContentsMargins(14, 10, 14, 12)
-        overlay_layout.setSpacing(2)
-
-        self.folder_label = QLabel()
-        self.folder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.folder_label.setStyleSheet("color: white;")
-        self.folder_label.setWordWrap(True)
-
-        self.file_label = QLabel()
-        self.file_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.file_label.setStyleSheet("color: white;")
-        self.file_label.setWordWrap(True)
-
-        overlay_layout.addWidget(self.folder_label)
-        overlay_layout.addWidget(self.file_label)
-
+        self.overlay_label.setWordWrap(True)
+        self.overlay_label.setVisible(False)
+        self.overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.overlay_margin = 20
 
     def resizeEvent(self, event):
@@ -94,17 +86,43 @@ class ImageViewer(QGraphicsView):
             self._fit_pixmap()
         self._update_overlay_position()
 
-    def set_image(self, image_path, duration=None):
+    def set_image(self, image_path, duration=None, transition=None):
         pixmap = QPixmap(image_path)
         if pixmap.isNull():
-            self.overlay_widget.setVisible(False)
+            self.overlay_label.setVisible(False)
             return
 
         self.motion_timer.stop()
         self.motion_anim.stop()
+        self.transition_anim.stop()
+        if self.active_transition is not None:
+            self._finalize_transition()
+
+        has_previous = not self.pixmap_item.pixmap().isNull()
+        previous_pixmap = self.pixmap_item.pixmap() if has_previous else QPixmap()
+
+        if has_previous and not previous_pixmap.isNull():
+            self.transition_item.setPixmap(previous_pixmap)
+            self.transition_item.setVisible(True)
+            self.transition_item.setOpacity(1.0)
+            self.transition_item.setScale(1.0)
+            self.transition_item.setPos(0.0, 0.0)
+            self.transition_item.setTransformOriginPoint(
+                self.transition_item.boundingRect().center()
+            )
+        else:
+            self.transition_item.setVisible(False)
 
         self._current_pixmap = pixmap
         self.pixmap_item.setPixmap(pixmap)
+        self.pixmap_item.setOpacity(1.0)
+        self.pixmap_item.setScale(1.0)
+        self.pixmap_item.setPos(0.0, 0.0)
+        self.pixmap_item.setTransformOriginPoint(
+            self.pixmap_item.boundingRect().center()
+        )
+        self.pixmap_item.setZValue(1)
+        self.transition_item.setZValue(0)
 
         self.scene.setSceneRect(QRectF(pixmap.rect()))
         self.resetTransform()
@@ -112,23 +130,11 @@ class ImageViewer(QGraphicsView):
 
         folder_name = os.path.basename(os.path.dirname(image_path))
         file_name = os.path.basename(image_path)
-
-        has_folder = bool(folder_name)
-        has_file = bool(file_name)
-
-        self.folder_label.setVisible(has_folder)
-        self.folder_label.setText(folder_name if has_folder else "")
-
-        self.file_label.setVisible(has_file)
-        self.file_label.setText(file_name if has_file else "")
-
-        should_show_overlay = has_folder or has_file
-        self.overlay_widget.setVisible(should_show_overlay)
-
-        if should_show_overlay:
-            self.overlay_widget.raise_()
-            self._apply_title_font_sizes()
-            self._update_overlay_position()
+        overlay_text = f"{folder_name}\n{file_name}" if folder_name else file_name
+        self.overlay_label.setText(overlay_text)
+        self.overlay_label.setVisible(True)
+        self.overlay_label.raise_()
+        self._update_overlay_position()
 
         if self.motion_enabled:
             self._prepare_motion_parameters()
@@ -137,6 +143,20 @@ class ImageViewer(QGraphicsView):
 
         if duration is not None:
             self.motion_duration = max(0, int(duration * 1000))
+
+        transition_type = None
+        if transition and has_previous:
+            if isinstance(transition, str):
+                lowered = transition.lower()
+                if lowered in {"crossfade", "slide", "zoom"}:
+                    transition_type = lowered
+        if transition_type:
+            self._start_transition(transition_type)
+        else:
+            self.transition_item.setVisible(False)
+            self.pixmap_item.setOpacity(1.0)
+            self.pixmap_item.setScale(1.0)
+            self.pixmap_item.setPos(0.0, 0.0)
 
         if self.motion_enabled:
             self.motion_timer.start(50)  # slight delay to allow layout
@@ -185,6 +205,67 @@ class ImageViewer(QGraphicsView):
         self.setTransform(transform)
         self._update_overlay_position()
 
+    def _start_transition(self, transition_type):
+        self.active_transition = transition_type
+        self.transition_item.setVisible(True)
+        self.transition_anim.stop()
+        self.transition_anim.setStartValue(0.0)
+        self.transition_anim.setEndValue(1.0)
+
+        if transition_type == "slide":
+            width = self.scene.sceneRect().width()
+            self.pixmap_item.setPos(width, 0.0)
+            self.transition_item.setPos(0.0, 0.0)
+            self.pixmap_item.setOpacity(1.0)
+            self.transition_item.setOpacity(1.0)
+        elif transition_type == "zoom":
+            self.pixmap_item.setScale(0.85)
+            self.pixmap_item.setOpacity(0.0)
+            self.transition_item.setOpacity(1.0)
+        else:
+            self.active_transition = "crossfade"
+            self.pixmap_item.setOpacity(0.0)
+            self.transition_item.setOpacity(1.0)
+            self.transition_item.setPos(0.0, 0.0)
+
+        self._apply_transition_progress(0.0)
+        self.transition_anim.start()
+
+    def _apply_transition_progress(self, progress):
+        if self.active_transition is None:
+            return
+
+        progress = max(0.0, min(1.0, float(progress)))
+
+        if self.active_transition == "slide":
+            width = self.scene.sceneRect().width()
+            self.pixmap_item.setPos(width * (1.0 - progress), 0.0)
+            self.transition_item.setPos(-width * progress, 0.0)
+            self.transition_item.setOpacity(1.0 - progress)
+        elif self.active_transition == "zoom":
+            start_scale = 0.85
+            end_scale = 1.0
+            current_scale = start_scale + (end_scale - start_scale) * progress
+            self.pixmap_item.setScale(current_scale)
+            self.pixmap_item.setOpacity(progress)
+            self.transition_item.setOpacity(1.0 - progress)
+        else:  # crossfade
+            self.pixmap_item.setOpacity(progress)
+            self.transition_item.setOpacity(1.0 - progress)
+
+        self._update_overlay_position()
+
+    def _finalize_transition(self):
+        self.pixmap_item.setPos(0.0, 0.0)
+        self.pixmap_item.setScale(1.0)
+        self.pixmap_item.setOpacity(1.0)
+        self.transition_item.setVisible(False)
+        self.transition_item.setOpacity(1.0)
+        self.transition_item.setScale(1.0)
+        self.transition_item.setPos(0.0, 0.0)
+        self.active_transition = None
+        self._update_overlay_position()
+
     def _fit_pixmap(self):
         """Scale the current image so it fits the available viewport."""
         if self.pixmap_item.pixmap().isNull():
@@ -217,41 +298,38 @@ class ImageViewer(QGraphicsView):
 
         self.apply_motion_progress(0.0)
 
-    def set_folder_title_font_size(self, font_size):
+    def set_title_font_size(self, font_size):
         sanitized = self._sanitize_font_size(font_size)
-        if math.isclose(self.folder_title_font_size, sanitized):
+        if math.isclose(self.title_font_size, sanitized):
             return
-        self.folder_title_font_size = sanitized
-        self._update_overlay_position()
-
-    def set_file_title_font_size(self, font_size):
-        sanitized = self._sanitize_font_size(font_size)
-        if math.isclose(self.file_title_font_size, sanitized):
-            return
-        self.file_title_font_size = sanitized
+        self.title_font_size = sanitized
         self._update_overlay_position()
 
     def _update_overlay_position(self):
-        if not self.overlay_widget.isVisible():
+        if self.overlay_label.text() == "":
+            self.overlay_label.setVisible(False)
             return
 
         max_width = self._calculate_title_max_width()
         if max_width <= 0:
-            self.overlay_widget.setVisible(False)
+            self.overlay_label.setVisible(False)
             return
 
-        self._apply_title_font_sizes()
-        self.overlay_widget.setMaximumWidth(max_width)
-        self.overlay_widget.adjustSize()
+        if not self.overlay_label.isVisible():
+            self.overlay_label.setVisible(True)
 
-        widget_width = self.overlay_widget.width()
-        widget_height = self.overlay_widget.height()
+        self.overlay_label.setMaximumWidth(max_width)
+        self._apply_title_font_size()
+        self.overlay_label.adjustSize()
 
-        x = max(self.overlay_margin, (self.viewport().width() - widget_width) // 2)
-        y = self.viewport().height() - widget_height - self.overlay_margin
+        label_width = self.overlay_label.width()
+        label_height = self.overlay_label.height()
+
+        x = max(self.overlay_margin, (self.viewport().width() - label_width) // 2)
+        y = self.viewport().height() - label_height - self.overlay_margin
 
         # Position relative to the widget coordinates.
-        self.overlay_widget.move(int(x), int(y))
+        self.overlay_label.move(int(x), int(y))
 
     def _calculate_title_max_width(self):
         viewport_limit = max(0, self.viewport().width() - self.overlay_margin * 2)
@@ -272,16 +350,10 @@ class ImageViewer(QGraphicsView):
         transform = self.transform()
         return transform.mapRect(self.pixmap_item.boundingRect())
 
-    def _apply_title_font_sizes(self):
-        if self.folder_label.isVisible():
-            folder_font = self.folder_label.font()
-            folder_font.setPointSizeF(self.folder_title_font_size)
-            self.folder_label.setFont(folder_font)
-
-        if self.file_label.isVisible():
-            file_font = self.file_label.font()
-            file_font.setPointSizeF(self.file_title_font_size)
-            self.file_label.setFont(file_font)
+    def _apply_title_font_size(self):
+        font = self.overlay_label.font()
+        font.setPointSizeF(self.title_font_size)
+        self.overlay_label.setFont(font)
 
     @staticmethod
     def _sanitize_font_size(font_size):

@@ -26,8 +26,8 @@ class SlideshowManager(QWidget):
         shuffle=False,
         duration=5,
         motion_enabled=True,
-        folder_title_font_size=24,
-        file_title_font_size=24,
+        title_font_size=24,
+        transitions=None,
     ):
         super().__init__()
 
@@ -35,16 +35,21 @@ class SlideshowManager(QWidget):
         self.shuffle = shuffle
         self.duration = duration
         self.motion_enabled = motion_enabled
-        self.folder_title_font_size = folder_title_font_size
-        self.file_title_font_size = file_title_font_size
+        self.title_font_size = title_font_size
         self.current_index = 0
         self.current_image_path = None
         self.images = []
+        if transitions is None:
+            self.transitions = ["crossfade"]
+        else:
+            valid_transitions = {"crossfade", "slide", "zoom"}
+            self.transitions = [
+                t for t in transitions if isinstance(t, str) and t in valid_transitions
+            ]
 
         self.viewer = ImageViewer(
             motion_enabled=self.motion_enabled,
-            folder_title_font_size=self.folder_title_font_size,
-            file_title_font_size=self.file_title_font_size,
+            title_font_size=self.title_font_size,
         )
 
         layout = QVBoxLayout()
@@ -97,9 +102,17 @@ class SlideshowManager(QWidget):
     def show_image(self, index):
         if not self.images:
             return
+        previous_path = self.current_image_path
         self.current_index = index % len(self.images)
         self.current_image_path = self.images[self.current_index]
-        self.viewer.set_image(self.current_image_path, duration=self.duration)
+        transition = None
+        if previous_path and self.transitions:
+            transition = random.choice(self.transitions)
+        self.viewer.set_image(
+            self.current_image_path,
+            duration=self.duration,
+            transition=transition,
+        )
 
     def next_image(self):
         if not self.images:
