@@ -1,8 +1,9 @@
+# File: slideshow/image_viewer.py
 import math
 import random
 import os
 
-from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation, QEasingCurve
+from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation, QEasingCurve, QPointF
 from PyQt6.QtGui import QPixmap, QTransform, QPainter
 from PyQt6.QtWidgets import (
     QGraphicsView,
@@ -25,17 +26,14 @@ class ImageViewer(QGraphicsView):
         self.scene.setBackgroundBrush(Qt.GlobalColor.black)
 
         self.pixmap_item = QGraphicsPixmapItem()
-        self.pixmap_item.setTransformationMode(
-            Qt.TransformationMode.SmoothTransformation
-        )
+        self.pixmap_item.setZValue(0)
         self.scene.addItem(self.pixmap_item)
 
-        self.transition_item = QGraphicsPixmapItem()
-        self.transition_item.setTransformationMode(
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.transition_item.setVisible(False)
-        self.scene.addItem(self.transition_item)
+        self.next_pixmap_item = QGraphicsPixmapItem()
+        self.next_pixmap_item.setVisible(False)
+        self.next_pixmap_item.setOpacity(0.0)
+        self.next_pixmap_item.setZValue(1)
+        self.scene.addItem(self.next_pixmap_item)
 
         self.setRenderHints(self.renderHints() | QPainter.RenderHint.SmoothPixmapTransform)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -55,10 +53,9 @@ class ImageViewer(QGraphicsView):
         self.motion_anim.valueChanged.connect(self.apply_motion_progress)
 
         self.transition_anim = QVariantAnimation(self)
+        self.transition_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
         self.transition_anim.valueChanged.connect(self._apply_transition_progress)
-        self.transition_anim.finished.connect(self._finalize_transition)
-        self.transition_anim.setDuration(600)
-        self.active_transition = None
+        self.transition_anim.finished.connect(self._finish_transition)
 
         self.motion_duration = 5000  # default duration (ms), can be overridden per image
         self._current_pixmap = QPixmap()
@@ -68,6 +65,22 @@ class ImageViewer(QGraphicsView):
         self.total_dx = 0.0
         self.total_dy = 0.0
         self.motion_prepared = False
+
+        # Track the currently running transition, if any.
+        self.transition_active = False
+        self.transition_type = None
+        self.transition_data = {}
+        self.transition_tiles = []
+        self.incoming_pixmap = QPixmap()
+        self.available_transitions = [
+            "crossfade",
+            "slide-horizontal",
+            "slide-vertical",
+            "zoom",
+            "carousel",
+            "mosaic",
+            "pixelate",
+        ]
 
         self.overlay_label = QLabel(self)
         self.overlay_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -95,38 +108,9 @@ class ImageViewer(QGraphicsView):
         self.motion_timer.stop()
         self.motion_anim.stop()
         self.transition_anim.stop()
-        if self.active_transition is not None:
-            self._finalize_transition()
 
-        has_previous = not self.pixmap_item.pixmap().isNull()
-        previous_pixmap = self.pixmap_item.pixmap() if has_previous else QPixmap()
-
-        if has_previous and not previous_pixmap.isNull():
-            self.transition_item.setPixmap(previous_pixmap)
-            self.transition_item.setVisible(True)
-            self.transition_item.setOpacity(1.0)
-            self.transition_item.setScale(1.0)
-            self.transition_item.setPos(0.0, 0.0)
-            self.transition_item.setTransformOriginPoint(
-                self.transition_item.boundingRect().center()
-            )
-        else:
-            self.transition_item.setVisible(False)
-
-        self._current_pixmap = pixmap
-        self.pixmap_item.setPixmap(pixmap)
-        self.pixmap_item.setOpacity(1.0)
-        self.pixmap_item.setScale(1.0)
-        self.pixmap_item.setPos(0.0, 0.0)
-        self.pixmap_item.setTransformOriginPoint(
-            self.pixmap_item.boundingRect().center()
-        )
-        self.pixmap_item.setZValue(1)
-        self.transition_item.setZValue(0)
-
-        self.scene.setSceneRect(QRectF(pixmap.rect()))
-        self.resetTransform()
-        self._fit_pixmap()
+        if duration is not None:
+            self.motion_duration = max(0, int(duration * 1000))
 
         folder_name = os.path.basename(os.path.dirname(image_path))
         file_name = os.path.basename(image_path)
@@ -134,32 +118,308 @@ class ImageViewer(QGraphicsView):
         self.overlay_label.setText(overlay_text)
         self.overlay_label.setVisible(True)
         self.overlay_label.raise_()
+
+        if self.pixmap_item.pixmap().isNull() or self._current_pixmap.isNull():
+            self._apply_pixmap_immediately(pixmap)
+            return
+
+        if self.transition_active:
+            self._reset_transition_items()
+            self._apply_pixmap_immediately(pixmap)
+            return
+
+        self.incoming_pixmap = pixmap
+        self._start_transition()
+
+    def _apply_pixmap_immediately(self, pixmap):
+        self._reset_transition_items()
+
+        self._current_pixmap = pixmap
+        self.pixmap_item.setPixmap(pixmap)
+
+        self.scene.setSceneRect(QRectF(pixmap.rect()))
+        self.resetTransform()
+        self._fit_pixmap()
         self._update_overlay_position()
 
         if self.motion_enabled:
             self._prepare_motion_parameters()
+            if self.motion_duration > 0:
+                self.motion_timer.start(50)
         else:
             self.motion_prepared = False
 
-        if duration is not None:
-            self.motion_duration = max(0, int(duration * 1000))
+    def _start_transition(self):
+        self.transition_active = True
+        self.transition_type = self._choose_transition()
+        self.transition_data = {}
 
-        transition_type = None
-        if transition and has_previous:
-            if isinstance(transition, str):
-                lowered = transition.lower()
-                if lowered in {"crossfade", "slide", "zoom"}:
-                    transition_type = lowered
-        if transition_type:
-            self._start_transition(transition_type)
-        else:
-            self.transition_item.setVisible(False)
+        old_pixmap = self.pixmap_item.pixmap()
+        new_pixmap = self.incoming_pixmap
+        self.scene.setSceneRect(self._combined_scene_rect(old_pixmap, new_pixmap))
+
+        self.pixmap_item.setPos(0, 0)
+        self.pixmap_item.setScale(1.0)
+        self.pixmap_item.setRotation(0.0)
+        self.pixmap_item.setOpacity(1.0)
+        self.pixmap_item.setTransformOriginPoint(self.pixmap_item.boundingRect().center())
+
+        self.next_pixmap_item.setPixmap(new_pixmap)
+        self.next_pixmap_item.setVisible(True)
+        self.next_pixmap_item.setOpacity(1.0)
+        self.next_pixmap_item.setPos(0, 0)
+        self.next_pixmap_item.setScale(1.0)
+        self.next_pixmap_item.setRotation(0.0)
+        self.next_pixmap_item.setTransformOriginPoint(self.next_pixmap_item.boundingRect().center())
+
+        if self.transition_type == "crossfade":
             self.pixmap_item.setOpacity(1.0)
-            self.pixmap_item.setScale(1.0)
-            self.pixmap_item.setPos(0.0, 0.0)
+            self.next_pixmap_item.setOpacity(0.0)
+            self.transition_anim.setDuration(700)
+        elif self.transition_type == "slide-horizontal":
+            direction = random.choice([-1, 1])
+            distance = max(old_pixmap.width(), new_pixmap.width())
+            self.next_pixmap_item.setPos(direction * distance, 0)
+            self.transition_data = {"direction": direction, "distance": distance}
+            self.transition_anim.setDuration(650)
+        elif self.transition_type == "slide-vertical":
+            direction = random.choice([-1, 1])
+            distance = max(old_pixmap.height(), new_pixmap.height())
+            self.next_pixmap_item.setPos(0, direction * distance)
+            self.transition_data = {"direction": direction, "distance": distance}
+            self.transition_anim.setDuration(650)
+        elif self.transition_type == "zoom":
+            zoom_in = random.choice([True, False])
+            start_scale = 0.7 if zoom_in else 1.2
+            self.next_pixmap_item.setScale(start_scale)
+            self.next_pixmap_item.setOpacity(0.0)
+            self.transition_data = {"start_scale": start_scale, "end_scale": 1.0}
+            self.transition_anim.setDuration(750)
+        elif self.transition_type == "carousel":
+            width = max(old_pixmap.width(), new_pixmap.width())
+            self.pixmap_item.setTransformOriginPoint(self.pixmap_item.boundingRect().center())
+            self.next_pixmap_item.setTransformOriginPoint(self.next_pixmap_item.boundingRect().center())
+            self.next_pixmap_item.setScale(0.8)
+            self.next_pixmap_item.setOpacity(0.2)
+            self.next_pixmap_item.setPos(width * 0.55, 0)
+            self.transition_data = {"width": width}
+            self.transition_anim.setDuration(800)
+        elif self.transition_type == "mosaic":
+            self._create_mosaic_tiles(old_pixmap)
+            self.pixmap_item.setOpacity(0.0)
+            self.next_pixmap_item.setOpacity(0.0)
+            self.next_pixmap_item.setZValue(-1)
+            self.transition_anim.setDuration(900)
+        elif self.transition_type == "pixelate":
+            self.next_pixmap_item.setOpacity(1.0)
+            self.transition_anim.setDuration(650)
+        else:
+            self.transition_type = "crossfade"
+            self.pixmap_item.setOpacity(1.0)
+            self.next_pixmap_item.setOpacity(0.0)
+            self.transition_anim.setDuration(700)
 
-        if self.motion_enabled:
-            self.motion_timer.start(50)  # slight delay to allow layout
+        self.transition_anim.setStartValue(0.0)
+        self.transition_anim.setEndValue(1.0)
+        self._apply_transition_progress(0.0)
+        self.transition_anim.start()
+
+    def _choose_transition(self):
+        if not self.available_transitions:
+            return "crossfade"
+        return random.choice(self.available_transitions)
+
+    def _combined_scene_rect(self, old_pixmap, new_pixmap):
+        widths = [pix.width() for pix in (old_pixmap, new_pixmap) if not pix.isNull()]
+        heights = [pix.height() for pix in (old_pixmap, new_pixmap) if not pix.isNull()]
+        if not widths or not heights:
+            return QRectF(new_pixmap.rect())
+        width = max(widths)
+        height = max(heights)
+        return QRectF(0, 0, width, height)
+
+    def _apply_transition_progress(self, progress):
+        if not self.transition_active:
+            return
+
+        progress = max(0.0, min(1.0, float(progress)))
+
+        if self.transition_type == "crossfade":
+            self.next_pixmap_item.setOpacity(progress)
+            self.pixmap_item.setOpacity(1.0 - progress)
+        elif self.transition_type == "slide-horizontal":
+            direction = self.transition_data.get("direction", 1)
+            distance = self.transition_data.get("distance", 0)
+            self.next_pixmap_item.setPos(direction * (1.0 - progress) * distance, 0)
+            self.pixmap_item.setPos(-direction * progress * distance, 0)
+        elif self.transition_type == "slide-vertical":
+            direction = self.transition_data.get("direction", 1)
+            distance = self.transition_data.get("distance", 0)
+            self.next_pixmap_item.setPos(0, direction * (1.0 - progress) * distance)
+            self.pixmap_item.setPos(0, -direction * progress * distance)
+        elif self.transition_type == "zoom":
+            start_scale = self.transition_data.get("start_scale", 0.7)
+            end_scale = self.transition_data.get("end_scale", 1.0)
+            current_scale = start_scale + (end_scale - start_scale) * progress
+            self.next_pixmap_item.setScale(current_scale)
+            self.next_pixmap_item.setOpacity(progress)
+            self.pixmap_item.setOpacity(1.0 - progress)
+        elif self.transition_type == "carousel":
+            width = self.transition_data.get("width", 0)
+            self.pixmap_item.setPos(-width * 0.35 * progress, 0)
+            self.pixmap_item.setOpacity(1.0 - 0.7 * progress)
+            self.pixmap_item.setScale(1.0 - 0.2 * progress)
+            self.pixmap_item.setRotation(-18 * progress)
+
+            self.next_pixmap_item.setPos(width * 0.55 * (1.0 - progress) - width * 0.1, 0)
+            self.next_pixmap_item.setOpacity(0.2 + 0.8 * progress)
+            self.next_pixmap_item.setScale(0.8 + 0.2 * progress)
+            self.next_pixmap_item.setRotation(12 * (1.0 - progress))
+        elif self.transition_type == "mosaic":
+            for tile, origin, offset in self.transition_tiles:
+                current_x = origin.x() + offset.x() * progress
+                current_y = origin.y() + offset.y() * progress
+                tile.setPos(current_x, current_y)
+                tile.setOpacity(1.0 - progress)
+            self.next_pixmap_item.setOpacity(progress)
+        elif self.transition_type == "pixelate":
+            self.pixmap_item.setOpacity(1.0 - progress)
+            self.next_pixmap_item.setOpacity(1.0)
+            self._update_pixelated_pixmap(progress)
+
+        self._update_overlay_position()
+
+    def _finish_transition(self):
+        if not self.transition_active:
+            return
+
+        self.transition_anim.stop()
+
+        if self.transition_type == "pixelate" and not self.incoming_pixmap.isNull():
+            self.next_pixmap_item.setPixmap(self.incoming_pixmap)
+
+        self._cleanup_transition_tiles()
+
+        self.pixmap_item.setOpacity(1.0)
+        self.pixmap_item.setPos(0, 0)
+        self.pixmap_item.setScale(1.0)
+        self.pixmap_item.setRotation(0.0)
+        self.pixmap_item.setTransformOriginPoint(QPointF(0, 0))
+
+        self.next_pixmap_item.setVisible(False)
+        self.next_pixmap_item.setOpacity(1.0)
+        self.next_pixmap_item.setPos(0, 0)
+        self.next_pixmap_item.setScale(1.0)
+        self.next_pixmap_item.setRotation(0.0)
+        self.next_pixmap_item.setZValue(1)
+
+        if not self.incoming_pixmap.isNull():
+            self._current_pixmap = self.incoming_pixmap
+            self.pixmap_item.setPixmap(self.incoming_pixmap)
+            self.scene.setSceneRect(QRectF(self.incoming_pixmap.rect()))
+            self.resetTransform()
+            self._fit_pixmap()
+            self._update_overlay_position()
+
+            if self.motion_enabled:
+                self._prepare_motion_parameters()
+                if self.motion_duration > 0:
+                    self.motion_timer.start(50)
+            else:
+                self.motion_prepared = False
+
+        self.transition_active = False
+        self.transition_type = None
+        self.transition_data = {}
+        self.incoming_pixmap = QPixmap()
+
+    def _reset_transition_items(self):
+        self.transition_anim.stop()
+        self._cleanup_transition_tiles()
+
+        self.pixmap_item.setOpacity(1.0)
+        self.pixmap_item.setPos(0, 0)
+        self.pixmap_item.setScale(1.0)
+        self.pixmap_item.setRotation(0.0)
+        self.pixmap_item.setTransformOriginPoint(QPointF(0, 0))
+
+        self.next_pixmap_item.setVisible(False)
+        self.next_pixmap_item.setOpacity(1.0)
+        self.next_pixmap_item.setPos(0, 0)
+        self.next_pixmap_item.setScale(1.0)
+        self.next_pixmap_item.setRotation(0.0)
+        self.next_pixmap_item.setTransformOriginPoint(QPointF(0, 0))
+        self.next_pixmap_item.setZValue(1)
+
+        self.transition_active = False
+        self.transition_type = None
+        self.transition_data = {}
+        self.incoming_pixmap = QPixmap()
+
+    def _cleanup_transition_tiles(self):
+        for tile, _, _ in self.transition_tiles:
+            self.scene.removeItem(tile)
+        self.transition_tiles = []
+
+    def _create_mosaic_tiles(self, old_pixmap):
+        self._cleanup_transition_tiles()
+        if old_pixmap.isNull():
+            return
+
+        cols = 6
+        rows = 5
+        width = old_pixmap.width()
+        height = old_pixmap.height()
+
+        for col in range(cols):
+            for row in range(rows):
+                x = int(col * width / cols)
+                y = int(row * height / rows)
+                next_x = int((col + 1) * width / cols)
+                next_y = int((row + 1) * height / rows)
+                tile_width = max(1, next_x - x)
+                tile_height = max(1, next_y - y)
+
+                tile_pixmap = old_pixmap.copy(x, y, tile_width, tile_height)
+                tile_item = QGraphicsPixmapItem(tile_pixmap)
+                tile_item.setPos(x, y)
+                tile_item.setZValue(5)
+                self.scene.addItem(tile_item)
+
+                angle = random.uniform(0, 2 * math.pi)
+                distance = random.uniform(width * 0.2, width * 0.6)
+                dx = math.cos(angle) * distance
+                dy = math.sin(angle) * distance
+                origin = QPointF(x, y)
+                offset = QPointF(dx, dy)
+                self.transition_tiles.append((tile_item, origin, offset))
+
+    def _update_pixelated_pixmap(self, progress):
+        if self.incoming_pixmap.isNull():
+            return
+
+        progress = max(0.0, min(1.0, float(progress)))
+        width = max(1, self.incoming_pixmap.width())
+        height = max(1, self.incoming_pixmap.height())
+
+        min_ratio = 0.05
+        ratio = min_ratio + (1.0 - min_ratio) * progress
+        sample_width = max(1, int(width * ratio))
+        sample_height = max(1, int(height * ratio))
+
+        small = self.incoming_pixmap.scaled(
+            sample_width,
+            sample_height,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.FastTransformation,
+        )
+        pixelated = small.scaled(
+            width,
+            height,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.FastTransformation,
+        )
+        self.next_pixmap_item.setPixmap(pixelated)
 
     def start_motion(self):
         if not self.motion_enabled:
@@ -203,67 +463,6 @@ class ImageViewer(QGraphicsView):
         transform.translate(current_dx, current_dy)
 
         self.setTransform(transform)
-        self._update_overlay_position()
-
-    def _start_transition(self, transition_type):
-        self.active_transition = transition_type
-        self.transition_item.setVisible(True)
-        self.transition_anim.stop()
-        self.transition_anim.setStartValue(0.0)
-        self.transition_anim.setEndValue(1.0)
-
-        if transition_type == "slide":
-            width = self.scene.sceneRect().width()
-            self.pixmap_item.setPos(width, 0.0)
-            self.transition_item.setPos(0.0, 0.0)
-            self.pixmap_item.setOpacity(1.0)
-            self.transition_item.setOpacity(1.0)
-        elif transition_type == "zoom":
-            self.pixmap_item.setScale(0.85)
-            self.pixmap_item.setOpacity(0.0)
-            self.transition_item.setOpacity(1.0)
-        else:
-            self.active_transition = "crossfade"
-            self.pixmap_item.setOpacity(0.0)
-            self.transition_item.setOpacity(1.0)
-            self.transition_item.setPos(0.0, 0.0)
-
-        self._apply_transition_progress(0.0)
-        self.transition_anim.start()
-
-    def _apply_transition_progress(self, progress):
-        if self.active_transition is None:
-            return
-
-        progress = max(0.0, min(1.0, float(progress)))
-
-        if self.active_transition == "slide":
-            width = self.scene.sceneRect().width()
-            self.pixmap_item.setPos(width * (1.0 - progress), 0.0)
-            self.transition_item.setPos(-width * progress, 0.0)
-            self.transition_item.setOpacity(1.0 - progress)
-        elif self.active_transition == "zoom":
-            start_scale = 0.85
-            end_scale = 1.0
-            current_scale = start_scale + (end_scale - start_scale) * progress
-            self.pixmap_item.setScale(current_scale)
-            self.pixmap_item.setOpacity(progress)
-            self.transition_item.setOpacity(1.0 - progress)
-        else:  # crossfade
-            self.pixmap_item.setOpacity(progress)
-            self.transition_item.setOpacity(1.0 - progress)
-
-        self._update_overlay_position()
-
-    def _finalize_transition(self):
-        self.pixmap_item.setPos(0.0, 0.0)
-        self.pixmap_item.setScale(1.0)
-        self.pixmap_item.setOpacity(1.0)
-        self.transition_item.setVisible(False)
-        self.transition_item.setOpacity(1.0)
-        self.transition_item.setScale(1.0)
-        self.transition_item.setPos(0.0, 0.0)
-        self.active_transition = None
         self._update_overlay_position()
 
     def _fit_pixmap(self):
