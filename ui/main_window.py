@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton, QLabel, QListWidget, QListWidgetItem,
-    QFileDialog, QHBoxLayout, QCheckBox, QSlider, QGridLayout
+    QFileDialog, QHBoxLayout, QCheckBox, QSlider, QGridLayout, QLineEdit
 )
 from PyQt6.QtCore import Qt
 from slideshow.slideshow_manager import SlideshowManager
@@ -80,6 +80,33 @@ class MainWindow(QWidget):
         self.motion_checkbox = QCheckBox("Enable Motion Effects")
         self.motion_checkbox.setChecked(True)
         layout.addWidget(self.motion_checkbox)
+
+        # Weather settings
+        self.weather_enable_checkbox = QCheckBox("Enable Weather Overlay")
+        layout.addWidget(self.weather_enable_checkbox)
+
+        weather_layout = QGridLayout()
+
+        weather_layout.addWidget(QLabel("API Key:"), 0, 0)
+        self.weather_api_key_input = QLineEdit()
+        self.weather_api_key_input.setPlaceholderText("OpenWeather API key")
+        weather_layout.addWidget(self.weather_api_key_input, 0, 1)
+
+        weather_layout.addWidget(QLabel("Location:"), 1, 0)
+        self.weather_location_input = QLineEdit()
+        self.weather_location_input.setPlaceholderText("City name or latitude,longitude")
+        weather_layout.addWidget(self.weather_location_input, 1, 1)
+
+        weather_layout.addWidget(QLabel("Units:"), 2, 0)
+        self.weather_units_input = QLineEdit()
+        self.weather_units_input.setPlaceholderText("metric / imperial / standard")
+        weather_layout.addWidget(self.weather_units_input, 2, 1)
+
+        weather_layout.setColumnStretch(1, 1)
+        layout.addLayout(weather_layout)
+
+        self.weather_enable_checkbox.toggled.connect(self.update_weather_fields_enabled)
+        self.update_weather_fields_enabled()
 
         # Transition selection
         layout.addWidget(QLabel("Enabled Transitions:"))
@@ -218,6 +245,32 @@ class MainWindow(QWidget):
         self.title_slider.setValue(int(round(title_font_size)))
         self.update_title_label()
 
+        weather_enabled = data.get("weather_enabled", False)
+
+        weather_api_key = data.get("weather_api_key")
+        if weather_api_key is None:
+            weather_api_key = ""
+        else:
+            weather_api_key = str(weather_api_key)
+
+        weather_location = data.get("weather_location")
+        if weather_location is None:
+            weather_location = ""
+        else:
+            weather_location = str(weather_location)
+
+        weather_units = data.get("weather_units")
+        if not weather_units:
+            weather_units = "metric"
+        else:
+            weather_units = str(weather_units)
+
+        self.weather_enable_checkbox.setChecked(weather_enabled)
+        self.weather_api_key_input.setText(weather_api_key)
+        self.weather_location_input.setText(weather_location)
+        self.weather_units_input.setText(weather_units)
+        self.update_weather_fields_enabled()
+
         for key, checkbox in self.transition_checkboxes.items():
             checkbox.setChecked(key in saved_transitions)
 
@@ -237,6 +290,10 @@ class MainWindow(QWidget):
             "transitions": self.normalize_transition_keys([
                 key for key, checkbox in self.transition_checkboxes.items() if checkbox.isChecked()
             ]),
+            "weather_enabled": self.weather_enable_checkbox.isChecked(),
+            "weather_api_key": self.weather_api_key_input.text().strip(),
+            "weather_location": self.weather_location_input.text().strip(),
+            "weather_units": self.weather_units_input.text().strip() or "metric",
         }
         save_json_settings(data)
 
@@ -285,3 +342,12 @@ class MainWindow(QWidget):
                     if alias not in normalized:
                         normalized.append(alias)
         return normalized
+
+    def update_weather_fields_enabled(self):
+        enabled = self.weather_enable_checkbox.isChecked()
+        for widget in (
+            self.weather_api_key_input,
+            self.weather_location_input,
+            self.weather_units_input,
+        ):
+            widget.setEnabled(enabled)

@@ -99,6 +99,21 @@ class ImageViewer(QGraphicsView):
 
         self.overlay_label.setText("")
 
+    def show_black_screen(self):
+        self.motion_timer.stop()
+        self.motion_anim.stop()
+        self.transition_anim.stop()
+        self._reset_transition_items()
+
+        self._current_pixmap = QPixmap()
+        empty_pixmap = QPixmap()
+        self.pixmap_item.setPixmap(empty_pixmap)
+        self.next_pixmap_item.setPixmap(empty_pixmap)
+        self.overlay_label.setVisible(False)
+
+        self.scene.setSceneRect(QRectF(self.viewport().rect()))
+        self.viewport().update()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if not self._current_pixmap.isNull():
@@ -444,13 +459,14 @@ class ImageViewer(QGraphicsView):
         sample_width = max(1, int(width * ratio))
         sample_height = max(1, int(height * ratio))
 
-        small = self.incoming_pixmap.scaled(
+        scaled_down = self.incoming_pixmap.scaled(
             sample_width,
             sample_height,
             Qt.AspectRatioMode.IgnoreAspectRatio,
-            Qt.TransformationMode.FastTransformation,
+            Qt.TransformationMode.SmoothTransformation,
         )
-        pixelated = small.scaled(
+
+        pixelated = scaled_down.scaled(
             width,
             height,
             Qt.AspectRatioMode.IgnoreAspectRatio,
@@ -459,27 +475,11 @@ class ImageViewer(QGraphicsView):
         self.next_pixmap_item.setPixmap(pixelated)
 
     def start_motion(self):
-        if not self.motion_enabled:
+        if not self.motion_enabled or not self.motion_prepared:
             return
 
-        if self._current_pixmap.isNull():
+        if self.pixmap_item.pixmap().isNull():
             return
-
-        if self.motion_duration <= 0:
-            return
-
-        self.setUpdatesEnabled(False)
-        try:
-            self.resetTransform()
-            self._fit_pixmap()
-            if self.motion_prepared:
-                self.apply_motion_progress(0.0)
-            else:
-                self._prepare_motion_parameters()
-        finally:
-            self.setUpdatesEnabled(True)
-
-        self.viewport().update()
 
         self.motion_anim.stop()
         self.motion_anim.setStartValue(0.0)

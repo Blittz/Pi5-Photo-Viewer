@@ -1,6 +1,11 @@
 {
     "folders": [
-        "/home/blittz/jarvis/photos/Google Photos/Ellie Sak Graduation 2025"
+        "/home/blittz/jarvis/photos/Google Photos/Ellie Sak Graduation 2025",
+        "/home/blittz/jarvis/photos/Google Photos/2011-07-18 Family Reunion",
+        "/home/blittz/jarvis/photos/Google Photos/Christmas 2010",
+        "/home/blittz/jarvis/photos/Google Photos/LA 2008",
+        "/home/blittz/jarvis/photos/Google Photos/LA 2009",
+        "/home/blittz/jarvis/photos/Google Photos/Misc Family"
     ],
     "shuffle": true,
     "motion": true,
@@ -14,5 +19,9 @@
         "carousel",
         "mosaic",
         "pixelate"
-    ]
+    ],
+    "weather_enabled": false,
+    "weather_api_key": "",
+    "weather_location": "",
+    "weather_units": "metric"
 }
