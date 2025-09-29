@@ -21,9 +21,9 @@
         "pixelate"
     ],
     "weather_enabled": false,
-    "weather_api_key": "",
-    "weather_location": "",
-    "weather_units": "metric",
+    "weather_api_key": "ad1bf6a441ee384979f30f76b27e1529",
+    "weather_location": "42.3265,122.8756",
+    "weather_units": "imperial",
     "night_mode_enabled": true,
     "night_start": "19:00",
     "night_end": "07:00"
