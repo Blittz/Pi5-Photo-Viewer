@@ -23,5 +23,8 @@
     "weather_enabled": false,
     "weather_api_key": "",
     "weather_location": "",
-    "weather_units": "metric"
+    "weather_units": "metric",
+    "night_mode_enabled": true,
+    "night_start": "19:00",
+    "night_end": "07:00"
 }

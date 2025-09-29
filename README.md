@@ -16,6 +16,7 @@
     <li>Ken Burns-style motion effects for every image</li>
     <li>Folder ordering with automatic image counts</li>
     <li>Settings stored in <code>settings.json</code> for persistence</li>
+    <li>Optional night schedule that pauses the slideshow and shows a black screen</li>
     <li>Weather overlay fields (API key, location, units) ready for configuration</li>
   </ul>
 </section>
@@ -48,6 +49,11 @@
     Switch <code>weather_enabled</code> to <code>true</code> after supplying valid values.
     <code>weather_units</code> accepts any unit string supported by your weather provider
     (OpenWeather supports <code>standard</code>, <code>metric</code>, or <code>imperial</code>).
+  </p>
+  <p>
+    To schedule overnight blackouts, enable <em>Night Mode Schedule</em> in the GUI and set
+    start and end times (24-hour <code>HH:MM</code> format). The slideshow pauses at the
+    start time, switches to a black screen, and resumes automatically at the end time.
   </p>
 </section>
 

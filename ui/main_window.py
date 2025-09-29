@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton, QLabel, QListWidget, QListWidgetItem,
-    QFileDialog, QHBoxLayout, QCheckBox, QSlider, QGridLayout, QLineEdit
+    QFileDialog, QHBoxLayout, QCheckBox, QSlider, QGridLayout, QLineEdit,
+    QTimeEdit,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTime
 from slideshow.slideshow_manager import SlideshowManager
 from utils.file_loader import count_images_in_folder
 import os
@@ -156,6 +157,29 @@ class MainWindow(QWidget):
 
         layout.addLayout(title_layout)
 
+        # Night mode scheduling
+        self.night_mode_checkbox = QCheckBox("Enable Night Mode Schedule")
+        self.night_mode_checkbox.toggled.connect(self.update_night_fields_enabled)
+        layout.addWidget(self.night_mode_checkbox)
+
+        night_layout = QGridLayout()
+        night_layout.addWidget(QLabel("Start:"), 0, 0)
+        self.night_start_edit = QTimeEdit()
+        self.night_start_edit.setDisplayFormat("HH:mm")
+        self.night_start_edit.setTime(QTime(22, 0))
+        night_layout.addWidget(self.night_start_edit, 0, 1)
+
+        night_layout.addWidget(QLabel("End:"), 1, 0)
+        self.night_end_edit = QTimeEdit()
+        self.night_end_edit.setDisplayFormat("HH:mm")
+        self.night_end_edit.setTime(QTime(7, 0))
+        night_layout.addWidget(self.night_end_edit, 1, 1)
+
+        night_layout.setColumnStretch(1, 1)
+        layout.addLayout(night_layout)
+
+        self.update_night_fields_enabled()
+
         # Start slideshow
         start_btn = QPushButton("Start Slideshow")
         start_btn.clicked.connect(self.start_slideshow)
@@ -210,6 +234,15 @@ class MainWindow(QWidget):
             key for key, checkbox in self.transition_checkboxes.items() if checkbox.isChecked()
         ]
 
+        night_start = None
+        night_end = None
+        if self.night_mode_checkbox.isChecked():
+            night_start = self.night_start_edit.time().toString("HH:mm")
+            night_end = self.night_end_edit.time().toString("HH:mm")
+            if night_start == night_end:
+                night_start = None
+                night_end = None
+
         self.slideshow = SlideshowManager(
             self.folders,
             shuffle=shuffle,
@@ -217,6 +250,8 @@ class MainWindow(QWidget):
             motion_enabled=motion_enabled,
             title_font_size=title_font_size,
             transitions=selected_transitions,
+            night_start=night_start,
+            night_end=night_end,
         )
         self.slideshow.showFullScreen()
 
@@ -271,6 +306,22 @@ class MainWindow(QWidget):
         self.weather_units_input.setText(weather_units)
         self.update_weather_fields_enabled()
 
+        night_mode_enabled = data.get("night_mode_enabled", False)
+        night_start = data.get("night_start")
+        night_end = data.get("night_end")
+
+        self.night_mode_checkbox.setChecked(night_mode_enabled)
+
+        def apply_time(edit, value):
+            if isinstance(value, str):
+                parsed = QTime.fromString(value, "HH:mm")
+                if parsed.isValid():
+                    edit.setTime(parsed)
+
+        apply_time(self.night_start_edit, night_start)
+        apply_time(self.night_end_edit, night_end)
+        self.update_night_fields_enabled()
+
         for key, checkbox in self.transition_checkboxes.items():
             checkbox.setChecked(key in saved_transitions)
 
@@ -294,6 +345,9 @@ class MainWindow(QWidget):
             "weather_api_key": self.weather_api_key_input.text().strip(),
             "weather_location": self.weather_location_input.text().strip(),
             "weather_units": self.weather_units_input.text().strip() or "metric",
+            "night_mode_enabled": self.night_mode_checkbox.isChecked(),
+            "night_start": self.night_start_edit.time().toString("HH:mm"),
+            "night_end": self.night_end_edit.time().toString("HH:mm"),
         }
         save_json_settings(data)
 
@@ -351,3 +405,8 @@ class MainWindow(QWidget):
             self.weather_units_input,
         ):
             widget.setEnabled(enabled)
+
+    def update_night_fields_enabled(self):
+        enabled = self.night_mode_checkbox.isChecked()
+        self.night_start_edit.setEnabled(enabled)
+        self.night_end_edit.setEnabled(enabled)

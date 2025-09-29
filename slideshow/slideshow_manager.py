@@ -86,7 +86,10 @@ class SlideshowManager(QWidget):
 
         self.slideshow_timer.start(self.duration * 1000)
         self.refresh_timer.start(60000)  # 60 seconds
-        self.night_timer.start(60000)  # 60 seconds
+        if self.night_start is not None and self.night_end is not None:
+            self.night_timer.start(60000)  # 60 seconds
+        else:
+            self.night_timer.stop()
         self.evaluate_night_mode()
 
     def load_images(self):
