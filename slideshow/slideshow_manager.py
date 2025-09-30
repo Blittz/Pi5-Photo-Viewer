@@ -1,9 +1,10 @@
 import os
 import random
 from datetime import datetime, time as time_cls
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
 from .image_viewer import ImageViewer, SUPPORTED_TRANSITIONS
+from utils.weather_client import WeatherClient
 
 SUPPORTED_IMAGE_FORMATS = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp')
 
@@ -25,6 +26,8 @@ def get_all_images_from_folders(folders):
 
 
 class SlideshowManager(QWidget):
+    weatherSummaryAvailable = pyqtSignal(bool, dict)
+
     def __init__(
         self,
         folders,
@@ -35,6 +38,10 @@ class SlideshowManager(QWidget):
         transitions=None,
         night_start=None,
         night_end=None,
+        weather_enabled=False,
+        weather_api_key="",
+        weather_location="",
+        weather_units="metric",
     ):
         super().__init__()
 
@@ -49,6 +56,10 @@ class SlideshowManager(QWidget):
         self.blackout_active = False
         self.night_start = self._parse_time(night_start)
         self.night_end = self._parse_time(night_end)
+        self.weather_client = None
+        self.weather_timer = None
+        self._weather_refresh_interval_ms = 5 * 60 * 1000  # 5 minutes
+        self._latest_weather_summary = None
         if transitions is None:
             self.transitions = list(SUPPORTED_TRANSITIONS)
         else:
@@ -91,6 +102,9 @@ class SlideshowManager(QWidget):
         else:
             self.night_timer.stop()
         self.evaluate_night_mode()
+
+        if weather_enabled:
+            self._initialize_weather(api_key=weather_api_key, location=weather_location, units=weather_units)
 
     def load_images(self):
         self.images = get_all_images_from_folders(self.folders)
@@ -174,7 +188,32 @@ class SlideshowManager(QWidget):
         self.slideshow_timer.stop()
         self.refresh_timer.stop()
         self.night_timer.stop()
+        if self.weather_timer is not None:
+            self.weather_timer.stop()
         super().closeEvent(event)
+
+    def _initialize_weather(self, api_key, location, units):
+        self.weather_client = WeatherClient(api_key, location, units, parent=self)
+        self.weather_client.weatherFetched.connect(self._on_weather_success)
+        self.weather_client.weatherError.connect(self._on_weather_error)
+        self.weather_timer = QTimer(self)
+        self.weather_timer.setInterval(self._weather_refresh_interval_ms)
+        self.weather_timer.timeout.connect(self._request_weather_update)
+        self._request_weather_update()
+        self.weather_timer.start()
+
+    def _request_weather_update(self):
+        if self.weather_client is not None:
+            self.weather_client.fetch_weather()
+
+    def _on_weather_success(self, payload):
+        self._latest_weather_summary = payload
+        self.weatherSummaryAvailable.emit(True, payload)
+
+    def _on_weather_error(self, message):
+        summary = {"error": message}
+        self._latest_weather_summary = summary
+        self.weatherSummaryAvailable.emit(False, summary)
 
     def evaluate_night_mode(self):
         if self.night_start is None or self.night_end is None:
