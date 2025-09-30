@@ -2,6 +2,7 @@
 import math
 import random
 import os
+import html
 from dataclasses import asdict, is_dataclass
 
 from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation, QEasingCurve, QPointF
@@ -28,11 +29,12 @@ SUPPORTED_TRANSITIONS_SET = set(SUPPORTED_TRANSITIONS)
 
 
 class ImageViewer(QGraphicsView):
-    def __init__(self, motion_enabled=True, title_font_size=24):
+    def __init__(self, motion_enabled=True, folder_font_size=24, filename_font_size=20):
         super().__init__()
 
         self.motion_enabled = motion_enabled
-        self.title_font_size = self._sanitize_font_size(title_font_size)
+        self.folder_font_size = self._sanitize_font_size(folder_font_size)
+        self.filename_font_size = self._sanitize_font_size(filename_font_size)
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
         self.setBackgroundBrush(Qt.GlobalColor.black)
@@ -87,20 +89,36 @@ class ImageViewer(QGraphicsView):
         self.incoming_pixmap = QPixmap()
         self.available_transitions = list(SUPPORTED_TRANSITIONS)
 
-        self.overlay_label = QLabel(self)
-        self.overlay_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.overlay_label.setStyleSheet(
+        self.metadata_label = QLabel(self)
+        self.metadata_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom
+        )
+        self.metadata_label.setStyleSheet(
             "color: white; background-color: rgba(0, 0, 0, 180);"
             "padding: 6px 14px; border-radius: 12px;"
         )
-        self.overlay_label.setWordWrap(True)
-        self.overlay_label.setVisible(False)
-        self.overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.metadata_label.setWordWrap(True)
+        self.metadata_label.setVisible(False)
+        self.metadata_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.metadata_label.setTextFormat(Qt.TextFormat.RichText)
+
+        self.weather_label = QLabel(self)
+        self.weather_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
+        self.weather_label.setStyleSheet(
+            "color: white; background-color: rgba(0, 0, 0, 180);"
+            "padding: 6px 12px; border-radius: 12px;"
+        )
+        self.weather_label.setWordWrap(True)
+        self.weather_label.setVisible(False)
+        self.weather_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
         self.overlay_margin = 20
 
-        self._photo_metadata_text = ""
+        self._photo_folder_text = ""
+        self._photo_filename_text = ""
         self._weather_text = ""
-        self.overlay_label.setText("")
 
     def show_black_screen(self):
         self.motion_timer.stop()
@@ -112,9 +130,11 @@ class ImageViewer(QGraphicsView):
         empty_pixmap = QPixmap()
         self.pixmap_item.setPixmap(empty_pixmap)
         self.next_pixmap_item.setPixmap(empty_pixmap)
-        self._photo_metadata_text = ""
+        self._photo_folder_text = ""
+        self._photo_filename_text = ""
         self._weather_text = ""
-        self._update_overlay_text()
+        self._update_metadata_label()
+        self._update_weather_label()
 
         self.scene.setSceneRect(QRectF(self.viewport().rect()))
         self.viewport().update()
@@ -123,13 +143,14 @@ class ImageViewer(QGraphicsView):
         super().resizeEvent(event)
         if not self._current_pixmap.isNull():
             self._fit_pixmap()
-        self._update_overlay_position()
+        self._update_overlay_positions()
 
     def set_image(self, image_path, duration=None, transition=None):
         pixmap = QPixmap(image_path)
         if pixmap.isNull():
-            self._photo_metadata_text = ""
-            self._update_overlay_text()
+            self._photo_folder_text = ""
+            self._photo_filename_text = ""
+            self._update_metadata_label()
             return
 
         self.motion_timer.stop()
@@ -139,9 +160,9 @@ class ImageViewer(QGraphicsView):
         if duration is not None:
             self.motion_duration = max(0, int(duration * 1000))
 
-        self._photo_metadata_text = self._format_photo_metadata(image_path)
-        self._update_overlay_text()
-        self._update_overlay_position()
+        self._set_photo_metadata(image_path)
+        self._update_metadata_label()
+        self._update_overlay_positions()
 
         requested_transition = None
         if isinstance(transition, str):
@@ -193,7 +214,7 @@ class ImageViewer(QGraphicsView):
         self.scene.setSceneRect(QRectF(pixmap.rect()))
         self.resetTransform()
         self._fit_pixmap()
-        self._update_overlay_position()
+        self._update_overlay_positions()
 
         if self.motion_enabled:
             self._prepare_motion_parameters()
@@ -342,7 +363,7 @@ class ImageViewer(QGraphicsView):
             self.next_pixmap_item.setOpacity(1.0)
             self._update_pixelated_pixmap(progress)
 
-        self._update_overlay_position()
+        self._update_overlay_positions()
 
     def _finish_transition(self):
         if not self.transition_active:
@@ -374,7 +395,7 @@ class ImageViewer(QGraphicsView):
             self.scene.setSceneRect(QRectF(self.incoming_pixmap.rect()))
             self.resetTransform()
             self._fit_pixmap()
-            self._update_overlay_position()
+            self._update_overlay_positions()
 
             if self.motion_enabled:
                 self._prepare_motion_parameters()
@@ -503,7 +524,7 @@ class ImageViewer(QGraphicsView):
         transform.translate(current_dx, current_dy)
 
         self.setTransform(transform)
-        self._update_overlay_position()
+        self._update_overlay_positions()
 
     def _fit_pixmap(self):
         """Scale the current image so it fits the available viewport."""
@@ -537,40 +558,24 @@ class ImageViewer(QGraphicsView):
 
         self.apply_motion_progress(0.0)
 
-    def set_title_font_size(self, font_size):
-        sanitized = self._sanitize_font_size(font_size)
-        if math.isclose(self.title_font_size, sanitized):
+    def set_metadata_font_sizes(self, folder_font_size, filename_font_size):
+        sanitized_folder = self._sanitize_font_size(folder_font_size)
+        sanitized_filename = self._sanitize_font_size(filename_font_size)
+        if (
+            math.isclose(self.folder_font_size, sanitized_folder)
+            and math.isclose(self.filename_font_size, sanitized_filename)
+        ):
             return
-        self.title_font_size = sanitized
-        self._update_overlay_position()
+        self.folder_font_size = sanitized_folder
+        self.filename_font_size = sanitized_filename
+        self._update_metadata_label()
+        self._update_overlay_positions()
 
-    def _update_overlay_position(self):
-        if self.overlay_label.text() == "":
-            self.overlay_label.setVisible(False)
-            return
+    def _update_overlay_positions(self):
+        self._update_weather_position()
+        self._update_metadata_position()
 
-        max_width = self._calculate_title_max_width()
-        if max_width <= 0:
-            self.overlay_label.setVisible(False)
-            return
-
-        if not self.overlay_label.isVisible():
-            self.overlay_label.setVisible(True)
-
-        self.overlay_label.setMaximumWidth(max_width)
-        self._apply_title_font_size()
-        self.overlay_label.adjustSize()
-
-        label_width = self.overlay_label.width()
-        label_height = self.overlay_label.height()
-
-        x = max(self.overlay_margin, (self.viewport().width() - label_width) // 2)
-        y = self.viewport().height() - label_height - self.overlay_margin
-
-        # Position relative to the widget coordinates.
-        self.overlay_label.move(int(x), int(y))
-
-    def _calculate_title_max_width(self):
+    def _calculate_metadata_max_width(self):
         viewport_limit = max(0, self.viewport().width() - self.overlay_margin * 2)
         if viewport_limit <= 0:
             return 0
@@ -589,42 +594,91 @@ class ImageViewer(QGraphicsView):
         transform = self.transform()
         return transform.mapRect(self.pixmap_item.boundingRect())
 
-    def _apply_title_font_size(self):
-        font = self.overlay_label.font()
-        font.setPointSizeF(self.title_font_size)
-        self.overlay_label.setFont(font)
+    def _update_metadata_label(self):
+        folder_text = self._photo_folder_text.strip()
+        filename_text = self._photo_filename_text.strip()
 
-    def _update_overlay_text(self):
-        photo_text = self._photo_metadata_text.strip()
-        weather_text = self._weather_text.strip()
+        segments = []
+        if folder_text:
+            segments.append(
+                "<span style=\"font-size:{:.1f}pt; font-weight:600;\">{}</span>".format(
+                    self.folder_font_size,
+                    html.escape(folder_text),
+                )
+            )
+        if filename_text:
+            segments.append(
+                "<span style=\"font-size:{:.1f}pt;\">{}</span>".format(
+                    self.filename_font_size,
+                    html.escape(filename_text),
+                )
+            )
 
-        if photo_text and weather_text:
-            combined = f"{photo_text}\n\n{weather_text}"
-        elif photo_text:
-            combined = photo_text
+        if segments:
+            combined = "<br>".join(segments)
+            self.metadata_label.setText(f"<div style='text-align:left;'>{combined}</div>")
+            self.metadata_label.setVisible(True)
+            self.metadata_label.raise_()
         else:
-            combined = weather_text
+            self.metadata_label.setText("")
+            self.metadata_label.setVisible(False)
 
-        self.overlay_label.setText(combined)
-        is_visible = bool(combined)
-        self.overlay_label.setVisible(is_visible)
-        if is_visible:
-            self.overlay_label.raise_()
+    def _update_metadata_position(self):
+        if not self.metadata_label.isVisible():
+            return
 
-    def _format_photo_metadata(self, image_path):
+        max_width = self._calculate_metadata_max_width()
+        if max_width <= 0:
+            self.metadata_label.setVisible(False)
+            return
+
+        self.metadata_label.setMaximumWidth(max_width)
+        self.metadata_label.adjustSize()
+
+        label_width = self.metadata_label.width()
+        label_height = self.metadata_label.height()
+
+        x = self.overlay_margin
+        y = self.viewport().height() - label_height - self.overlay_margin
+        self.metadata_label.move(int(x), int(y))
+
+    def _set_photo_metadata(self, image_path):
         folder_name = os.path.basename(os.path.dirname(image_path))
         file_name = os.path.basename(image_path)
-        if folder_name:
-            return f"{folder_name}\n{file_name}"
-        return file_name
+        self._photo_folder_text = folder_name or ""
+        self._photo_filename_text = file_name or ""
 
     def set_weather_overlay(self, weather):
         text = self._normalize_weather_text(weather)
         if text == self._weather_text:
             return
         self._weather_text = text
-        self._update_overlay_text()
-        self._update_overlay_position()
+        self._update_weather_label()
+        self._update_overlay_positions()
+
+    def _update_weather_label(self):
+        weather_text = self._weather_text.strip()
+        self.weather_label.setText(weather_text)
+        is_visible = bool(weather_text)
+        self.weather_label.setVisible(is_visible)
+        if is_visible:
+            self.weather_label.raise_()
+
+    def _update_weather_position(self):
+        if not self.weather_label.isVisible():
+            return
+
+        max_width = max(0, self.viewport().width() - self.overlay_margin * 2)
+        if max_width <= 0:
+            self.weather_label.setVisible(False)
+            return
+
+        self.weather_label.setMaximumWidth(max_width)
+        self.weather_label.adjustSize()
+
+        x = self.overlay_margin
+        y = self.overlay_margin
+        self.weather_label.move(int(x), int(y))
 
     @staticmethod
     def _normalize_weather_text(weather):

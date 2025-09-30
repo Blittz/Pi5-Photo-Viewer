@@ -34,7 +34,8 @@ class SlideshowManager(QWidget):
         shuffle=False,
         duration=5,
         motion_enabled=True,
-        title_font_size=24,
+        folder_font_size=24,
+        filename_font_size=20,
         transitions=None,
         night_start=None,
         night_end=None,
@@ -49,7 +50,8 @@ class SlideshowManager(QWidget):
         self.shuffle = shuffle
         self.duration = duration
         self.motion_enabled = motion_enabled
-        self.title_font_size = title_font_size
+        self.folder_font_size = folder_font_size
+        self.filename_font_size = filename_font_size
         self.current_index = 0
         self.current_image_path = None
         self.images = []
@@ -69,10 +71,14 @@ class SlideshowManager(QWidget):
 
         self.viewer = ImageViewer(
             motion_enabled=self.motion_enabled,
-            title_font_size=self.title_font_size,
+            folder_font_size=self.folder_font_size,
+            filename_font_size=self.filename_font_size,
         )
         self.viewer.set_available_transitions(self.transitions)
         self.viewer.set_weather_overlay(None)
+        self.viewer.set_metadata_font_sizes(
+            self.folder_font_size, self.filename_font_size
+        )
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -260,7 +266,7 @@ class SlideshowManager(QWidget):
 
         main_line = " • ".join(piece for piece in pieces if piece)
         lines = [main_line] if main_line else []
-        lines.append(timestamp.strftime("Updated %H:%M"))
+        lines.append(f"Updated {self._format_time(timestamp)}")
         return "\n".join(lines)
 
     def _format_stale_weather_text(self, error_message, timestamp):
@@ -269,7 +275,7 @@ class SlideshowManager(QWidget):
         else:
             message = "Weather unavailable"
         lines = [message]
-        lines.append(timestamp.strftime("Last update %H:%M"))
+        lines.append(f"Last update {self._format_time(timestamp)}")
         return "\n".join(lines)
 
     def _format_temperature(self, value):
@@ -281,6 +287,11 @@ class SlideshowManager(QWidget):
         }
         symbol = symbol_map.get(unit, "°")
         return f"{value:.0f}{symbol}"
+
+    @staticmethod
+    def _format_time(timestamp):
+        formatted = timestamp.strftime("%I:%M %p")
+        return formatted.lstrip("0")
 
     def evaluate_night_mode(self):
         if self.night_start is None or self.night_end is None:

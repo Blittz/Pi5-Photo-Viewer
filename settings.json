@@ -10,6 +10,8 @@
     "shuffle": true,
     "motion": true,
     "duration": 10,
+    "overlay_folder_font_size": 24,
+    "overlay_filename_font_size": 12,
     "overlay_title_font_size": 24,
     "transitions": [
         "crossfade",

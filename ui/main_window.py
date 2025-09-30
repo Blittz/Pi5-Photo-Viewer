@@ -139,23 +139,41 @@ class MainWindow(QWidget):
 
         layout.addLayout(duration_layout)
 
-        # Title font size slider
-        title_layout = QHBoxLayout()
-        title_label = QLabel("Title Font Size (pt):")
-        self.title_slider = QSlider(Qt.Orientation.Horizontal)
-        self.title_slider.setRange(12, 48)
-        self.title_slider.setValue(24)
-        self.title_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.title_slider.setTickInterval(2)
-        self.title_slider.valueChanged.connect(self.update_title_label)
+        # Folder font size slider
+        folder_font_layout = QHBoxLayout()
+        folder_font_label = QLabel("Folder Font Size (pt):")
+        self.folder_font_slider = QSlider(Qt.Orientation.Horizontal)
+        self.folder_font_slider.setRange(12, 48)
+        self.folder_font_slider.setValue(24)
+        self.folder_font_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.folder_font_slider.setTickInterval(2)
+        self.folder_font_slider.valueChanged.connect(self.update_folder_font_label)
 
-        self.title_display = QLabel()
-        self.update_title_label()
-        title_layout.addWidget(title_label)
-        title_layout.addWidget(self.title_slider)
-        title_layout.addWidget(self.title_display)
+        self.folder_font_display = QLabel()
+        self.update_folder_font_label()
+        folder_font_layout.addWidget(folder_font_label)
+        folder_font_layout.addWidget(self.folder_font_slider)
+        folder_font_layout.addWidget(self.folder_font_display)
 
-        layout.addLayout(title_layout)
+        layout.addLayout(folder_font_layout)
+
+        # Filename font size slider
+        filename_font_layout = QHBoxLayout()
+        filename_font_label = QLabel("Filename Font Size (pt):")
+        self.filename_font_slider = QSlider(Qt.Orientation.Horizontal)
+        self.filename_font_slider.setRange(12, 48)
+        self.filename_font_slider.setValue(20)
+        self.filename_font_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.filename_font_slider.setTickInterval(2)
+        self.filename_font_slider.valueChanged.connect(self.update_filename_font_label)
+
+        self.filename_font_display = QLabel()
+        self.update_filename_font_label()
+        filename_font_layout.addWidget(filename_font_label)
+        filename_font_layout.addWidget(self.filename_font_slider)
+        filename_font_layout.addWidget(self.filename_font_display)
+
+        layout.addLayout(filename_font_layout)
 
         # Night mode scheduling
         self.night_mode_checkbox = QCheckBox("Enable Night Mode Schedule")
@@ -229,7 +247,8 @@ class MainWindow(QWidget):
         shuffle = self.shuffle_checkbox.isChecked()
         duration = self.duration_slider.value()
         motion_enabled = self.motion_checkbox.isChecked()
-        title_font_size = self.title_slider.value()
+        folder_font_size = self.folder_font_slider.value()
+        filename_font_size = self.filename_font_slider.value()
         selected_transitions = [
             key for key, checkbox in self.transition_checkboxes.items() if checkbox.isChecked()
         ]
@@ -253,7 +272,8 @@ class MainWindow(QWidget):
             shuffle=shuffle,
             duration=duration,
             motion_enabled=motion_enabled,
-            title_font_size=title_font_size,
+            folder_font_size=folder_font_size,
+            filename_font_size=filename_font_size,
             transitions=selected_transitions,
             night_start=night_start,
             night_end=night_end,
@@ -271,14 +291,35 @@ class MainWindow(QWidget):
         shuffle = data.get("shuffle", True)
         motion = data.get("motion", True)
         duration = data.get("duration", 5)
-        title_font_size = data.get("overlay_title_font_size")
+        folder_font_size = data.get("overlay_folder_font_size")
+        filename_font_size = data.get("overlay_filename_font_size")
+        legacy_title_font_size = data.get("overlay_title_font_size")
+
+        def coerce_font_value(value, default):
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return default
         saved_transitions = self.normalize_transition_keys(data.get("transitions"))
-        if title_font_size is None:
-            legacy_percentage = data.get("overlay_percentage")
-            if legacy_percentage is not None:
-                title_font_size = self.convert_legacy_overlay_percentage(legacy_percentage)
+        if folder_font_size is None:
+            if legacy_title_font_size is not None:
+                folder_font_size = coerce_font_value(legacy_title_font_size, 24)
             else:
-                title_font_size = 24
+                legacy_percentage = data.get("overlay_percentage")
+                if legacy_percentage is not None:
+                    folder_font_size = self.convert_legacy_overlay_percentage(legacy_percentage)
+                else:
+                    folder_font_size = 24
+        else:
+            folder_font_size = coerce_font_value(folder_font_size, 24)
+
+        if filename_font_size is None:
+            if legacy_title_font_size is not None:
+                filename_font_size = max(12, coerce_font_value(legacy_title_font_size, 24) - 4)
+            else:
+                filename_font_size = max(12, folder_font_size - 4)
+        else:
+            filename_font_size = coerce_font_value(filename_font_size, max(12, folder_font_size - 4))
 
         if not saved_transitions:
             saved_transitions = [key for _, key in TRANSITION_OPTIONS]
@@ -286,8 +327,20 @@ class MainWindow(QWidget):
         self.shuffle_checkbox.setChecked(shuffle)
         self.motion_checkbox.setChecked(motion)
         self.duration_slider.setValue(duration)
-        self.title_slider.setValue(int(round(title_font_size)))
-        self.update_title_label()
+        folder_value = int(round(folder_font_size))
+        folder_value = max(
+            self.folder_font_slider.minimum(),
+            min(self.folder_font_slider.maximum(), folder_value),
+        )
+        filename_value = int(round(filename_font_size))
+        filename_value = max(
+            self.filename_font_slider.minimum(),
+            min(self.filename_font_slider.maximum(), filename_value),
+        )
+        self.folder_font_slider.setValue(folder_value)
+        self.filename_font_slider.setValue(filename_value)
+        self.update_folder_font_label()
+        self.update_filename_font_label()
 
         weather_enabled = data.get("weather_enabled", False)
 
@@ -346,7 +399,9 @@ class MainWindow(QWidget):
             "shuffle": self.shuffle_checkbox.isChecked(),
             "motion": self.motion_checkbox.isChecked(),
             "duration": self.duration_slider.value(),
-            "overlay_title_font_size": self.title_slider.value(),
+            "overlay_folder_font_size": self.folder_font_slider.value(),
+            "overlay_filename_font_size": self.filename_font_slider.value(),
+            "overlay_title_font_size": self.folder_font_slider.value(),
             "transitions": self.normalize_transition_keys([
                 key for key, checkbox in self.transition_checkboxes.items() if checkbox.isChecked()
             ]),
@@ -364,8 +419,11 @@ class MainWindow(QWidget):
         self.save_settings()
         super().closeEvent(event)
 
-    def update_title_label(self):
-        self.title_display.setText(f"{self.title_slider.value()} pt")
+    def update_folder_font_label(self):
+        self.folder_font_display.setText(f"{self.folder_font_slider.value()} pt")
+
+    def update_filename_font_label(self):
+        self.filename_font_display.setText(f"{self.filename_font_slider.value()} pt")
 
     @staticmethod
     def convert_legacy_overlay_percentage(percentage):
