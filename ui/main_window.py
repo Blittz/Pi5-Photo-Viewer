@@ -243,6 +243,11 @@ class MainWindow(QWidget):
                 night_start = None
                 night_end = None
 
+        weather_enabled = self.weather_enable_checkbox.isChecked()
+        weather_api_key = self.weather_api_key_input.text().strip()
+        weather_location = self.weather_location_input.text().strip()
+        weather_units = self.weather_units_input.text().strip() or "metric"
+
         self.slideshow = SlideshowManager(
             self.folders,
             shuffle=shuffle,
@@ -252,6 +257,10 @@ class MainWindow(QWidget):
             transitions=selected_transitions,
             night_start=night_start,
             night_end=night_end,
+            weather_enabled=weather_enabled,
+            weather_api_key=weather_api_key,
+            weather_location=weather_location,
+            weather_units=weather_units,
         )
         self.slideshow.showFullScreen()
 

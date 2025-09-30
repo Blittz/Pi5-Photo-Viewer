@@ -2,6 +2,7 @@
 import math
 import random
 import os
+from dataclasses import asdict, is_dataclass
 
 from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation, QEasingCurve, QPointF
 from PyQt6.QtGui import QPixmap, QTransform, QPainter
@@ -97,6 +98,8 @@ class ImageViewer(QGraphicsView):
         self.overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.overlay_margin = 20
 
+        self._photo_metadata_text = ""
+        self._weather_text = ""
         self.overlay_label.setText("")
 
     def show_black_screen(self):
@@ -109,7 +112,9 @@ class ImageViewer(QGraphicsView):
         empty_pixmap = QPixmap()
         self.pixmap_item.setPixmap(empty_pixmap)
         self.next_pixmap_item.setPixmap(empty_pixmap)
-        self.overlay_label.setVisible(False)
+        self._photo_metadata_text = ""
+        self._weather_text = ""
+        self._update_overlay_text()
 
         self.scene.setSceneRect(QRectF(self.viewport().rect()))
         self.viewport().update()
@@ -123,7 +128,8 @@ class ImageViewer(QGraphicsView):
     def set_image(self, image_path, duration=None, transition=None):
         pixmap = QPixmap(image_path)
         if pixmap.isNull():
-            self.overlay_label.setVisible(False)
+            self._photo_metadata_text = ""
+            self._update_overlay_text()
             return
 
         self.motion_timer.stop()
@@ -133,12 +139,9 @@ class ImageViewer(QGraphicsView):
         if duration is not None:
             self.motion_duration = max(0, int(duration * 1000))
 
-        folder_name = os.path.basename(os.path.dirname(image_path))
-        file_name = os.path.basename(image_path)
-        overlay_text = f"{folder_name}\n{file_name}" if folder_name else file_name
-        self.overlay_label.setText(overlay_text)
-        self.overlay_label.setVisible(True)
-        self.overlay_label.raise_()
+        self._photo_metadata_text = self._format_photo_metadata(image_path)
+        self._update_overlay_text()
+        self._update_overlay_position()
 
         requested_transition = None
         if isinstance(transition, str):
@@ -590,6 +593,60 @@ class ImageViewer(QGraphicsView):
         font = self.overlay_label.font()
         font.setPointSizeF(self.title_font_size)
         self.overlay_label.setFont(font)
+
+    def _update_overlay_text(self):
+        photo_text = self._photo_metadata_text.strip()
+        weather_text = self._weather_text.strip()
+
+        if photo_text and weather_text:
+            combined = f"{photo_text}\n\n{weather_text}"
+        elif photo_text:
+            combined = photo_text
+        else:
+            combined = weather_text
+
+        self.overlay_label.setText(combined)
+        is_visible = bool(combined)
+        self.overlay_label.setVisible(is_visible)
+        if is_visible:
+            self.overlay_label.raise_()
+
+    def _format_photo_metadata(self, image_path):
+        folder_name = os.path.basename(os.path.dirname(image_path))
+        file_name = os.path.basename(image_path)
+        if folder_name:
+            return f"{folder_name}\n{file_name}"
+        return file_name
+
+    def set_weather_overlay(self, weather):
+        text = self._normalize_weather_text(weather)
+        if text == self._weather_text:
+            return
+        self._weather_text = text
+        self._update_overlay_text()
+        self._update_overlay_position()
+
+    @staticmethod
+    def _normalize_weather_text(weather):
+        if weather is None:
+            return ""
+        if isinstance(weather, str):
+            return weather.strip()
+        if is_dataclass(weather):
+            weather = asdict(weather)
+        if isinstance(weather, dict):
+            condition = weather.get("condition")
+            temperature = weather.get("temperature")
+            extra = weather.get("extra")
+            parts = []
+            if temperature is not None:
+                parts.append(str(temperature))
+            if condition:
+                parts.append(str(condition))
+            if extra:
+                parts.append(str(extra))
+            return " – ".join(part for part in parts if part).strip()
+        return str(weather).strip()
 
     @staticmethod
     def _sanitize_font_size(font_size):

@@ -60,6 +60,8 @@ class SlideshowManager(QWidget):
         self.weather_timer = None
         self._weather_refresh_interval_ms = 5 * 60 * 1000  # 5 minutes
         self._latest_weather_summary = None
+        self._weather_last_success = None
+        self._weather_units = (weather_units or "metric").strip() or "metric"
         if transitions is None:
             self.transitions = list(SUPPORTED_TRANSITIONS)
         else:
@@ -70,6 +72,7 @@ class SlideshowManager(QWidget):
             title_font_size=self.title_font_size,
         )
         self.viewer.set_available_transitions(self.transitions)
+        self.viewer.set_weather_overlay(None)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -104,7 +107,11 @@ class SlideshowManager(QWidget):
         self.evaluate_night_mode()
 
         if weather_enabled:
-            self._initialize_weather(api_key=weather_api_key, location=weather_location, units=weather_units)
+            self._initialize_weather(
+                api_key=weather_api_key,
+                location=weather_location,
+                units=weather_units,
+            )
 
     def load_images(self):
         self.images = get_all_images_from_folders(self.folders)
@@ -193,14 +200,18 @@ class SlideshowManager(QWidget):
         super().closeEvent(event)
 
     def _initialize_weather(self, api_key, location, units):
+        self._weather_units = (units or "metric").strip() or "metric"
         self.weather_client = WeatherClient(api_key, location, units, parent=self)
         self.weather_client.weatherFetched.connect(self._on_weather_success)
         self.weather_client.weatherError.connect(self._on_weather_error)
         self.weather_timer = QTimer(self)
         self.weather_timer.setInterval(self._weather_refresh_interval_ms)
         self.weather_timer.timeout.connect(self._request_weather_update)
+        self.weatherSummaryAvailable.connect(self._handle_weather_summary)
         self._request_weather_update()
         self.weather_timer.start()
+        if self._latest_weather_summary is not None:
+            self._handle_weather_summary(True, self._latest_weather_summary)
 
     def _request_weather_update(self):
         if self.weather_client is not None:
@@ -214,6 +225,62 @@ class SlideshowManager(QWidget):
         summary = {"error": message}
         self._latest_weather_summary = summary
         self.weatherSummaryAvailable.emit(False, summary)
+
+    def _handle_weather_summary(self, success, payload):
+        if success:
+            self._weather_last_success = datetime.now()
+            weather_text = self._format_weather_text(payload, self._weather_last_success)
+            self.viewer.set_weather_overlay(weather_text)
+            return
+
+        if self._weather_last_success is None:
+            self.viewer.set_weather_overlay("")
+            return
+
+        error_message = ""
+        if isinstance(payload, dict):
+            error_message = payload.get("error", "")
+        stale_text = self._format_stale_weather_text(error_message, self._weather_last_success)
+        self.viewer.set_weather_overlay(stale_text)
+
+    def _format_weather_text(self, payload, timestamp):
+        if not isinstance(payload, dict):
+            return str(payload)
+
+        pieces = []
+        temperature = payload.get("temperature")
+        if isinstance(temperature, (int, float)):
+            pieces.append(self._format_temperature(float(temperature)))
+
+        condition = payload.get("condition")
+        if condition:
+            condition_text = str(condition).strip()
+            if condition_text:
+                pieces.append(condition_text)
+
+        main_line = " • ".join(piece for piece in pieces if piece)
+        lines = [main_line] if main_line else []
+        lines.append(timestamp.strftime("Updated %H:%M"))
+        return "\n".join(lines)
+
+    def _format_stale_weather_text(self, error_message, timestamp):
+        if error_message:
+            message = str(error_message).strip() or "Weather unavailable"
+        else:
+            message = "Weather unavailable"
+        lines = [message]
+        lines.append(timestamp.strftime("Last update %H:%M"))
+        return "\n".join(lines)
+
+    def _format_temperature(self, value):
+        unit = self._weather_units.lower()
+        symbol_map = {
+            "metric": "°C",
+            "imperial": "°F",
+            "standard": "K",
+        }
+        symbol = symbol_map.get(unit, "°")
+        return f"{value:.0f}{symbol}"
 
     def evaluate_night_mode(self):
         if self.night_start is None or self.night_end is None:
