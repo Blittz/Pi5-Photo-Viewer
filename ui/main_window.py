@@ -175,6 +175,24 @@ class MainWindow(QWidget):
 
         layout.addLayout(filename_font_layout)
 
+        # Weather font size slider
+        weather_font_layout = QHBoxLayout()
+        weather_font_label = QLabel("Weather Font Size (pt):")
+        self.weather_font_slider = QSlider(Qt.Orientation.Horizontal)
+        self.weather_font_slider.setRange(12, 48)
+        self.weather_font_slider.setValue(18)
+        self.weather_font_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.weather_font_slider.setTickInterval(2)
+        self.weather_font_slider.valueChanged.connect(self.update_weather_font_label)
+
+        self.weather_font_display = QLabel()
+        self.update_weather_font_label()
+        weather_font_layout.addWidget(weather_font_label)
+        weather_font_layout.addWidget(self.weather_font_slider)
+        weather_font_layout.addWidget(self.weather_font_display)
+
+        layout.addLayout(weather_font_layout)
+
         # Night mode scheduling
         self.night_mode_checkbox = QCheckBox("Enable Night Mode Schedule")
         self.night_mode_checkbox.toggled.connect(self.update_night_fields_enabled)
@@ -249,6 +267,7 @@ class MainWindow(QWidget):
         motion_enabled = self.motion_checkbox.isChecked()
         folder_font_size = self.folder_font_slider.value()
         filename_font_size = self.filename_font_slider.value()
+        weather_font_size = self.weather_font_slider.value()
         selected_transitions = [
             key for key, checkbox in self.transition_checkboxes.items() if checkbox.isChecked()
         ]
@@ -274,6 +293,7 @@ class MainWindow(QWidget):
             motion_enabled=motion_enabled,
             folder_font_size=folder_font_size,
             filename_font_size=filename_font_size,
+            weather_font_size=weather_font_size,
             transitions=selected_transitions,
             night_start=night_start,
             night_end=night_end,
@@ -293,6 +313,7 @@ class MainWindow(QWidget):
         duration = data.get("duration", 5)
         folder_font_size = data.get("overlay_folder_font_size")
         filename_font_size = data.get("overlay_filename_font_size")
+        weather_font_size = data.get("overlay_weather_font_size")
         legacy_title_font_size = data.get("overlay_title_font_size")
 
         def coerce_font_value(value, default):
@@ -321,6 +342,11 @@ class MainWindow(QWidget):
         else:
             filename_font_size = coerce_font_value(filename_font_size, max(12, folder_font_size - 4))
 
+        if weather_font_size is None:
+            weather_font_size = 18
+        else:
+            weather_font_size = coerce_font_value(weather_font_size, 18)
+
         if not saved_transitions:
             saved_transitions = [key for _, key in TRANSITION_OPTIONS]
 
@@ -337,10 +363,17 @@ class MainWindow(QWidget):
             self.filename_font_slider.minimum(),
             min(self.filename_font_slider.maximum(), filename_value),
         )
+        weather_value = int(round(weather_font_size))
+        weather_value = max(
+            self.weather_font_slider.minimum(),
+            min(self.weather_font_slider.maximum(), weather_value),
+        )
         self.folder_font_slider.setValue(folder_value)
         self.filename_font_slider.setValue(filename_value)
+        self.weather_font_slider.setValue(weather_value)
         self.update_folder_font_label()
         self.update_filename_font_label()
+        self.update_weather_font_label()
 
         weather_enabled = data.get("weather_enabled", False)
 
@@ -401,6 +434,7 @@ class MainWindow(QWidget):
             "duration": self.duration_slider.value(),
             "overlay_folder_font_size": self.folder_font_slider.value(),
             "overlay_filename_font_size": self.filename_font_slider.value(),
+            "overlay_weather_font_size": self.weather_font_slider.value(),
             "overlay_title_font_size": self.folder_font_slider.value(),
             "transitions": self.normalize_transition_keys([
                 key for key, checkbox in self.transition_checkboxes.items() if checkbox.isChecked()
@@ -424,6 +458,9 @@ class MainWindow(QWidget):
 
     def update_filename_font_label(self):
         self.filename_font_display.setText(f"{self.filename_font_slider.value()} pt")
+
+    def update_weather_font_label(self):
+        self.weather_font_display.setText(f"{self.weather_font_slider.value()} pt")
 
     @staticmethod
     def convert_legacy_overlay_percentage(percentage):

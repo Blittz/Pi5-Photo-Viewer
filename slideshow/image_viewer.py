@@ -29,12 +29,19 @@ SUPPORTED_TRANSITIONS_SET = set(SUPPORTED_TRANSITIONS)
 
 
 class ImageViewer(QGraphicsView):
-    def __init__(self, motion_enabled=True, folder_font_size=24, filename_font_size=20):
+    def __init__(
+        self,
+        motion_enabled=True,
+        folder_font_size=24,
+        filename_font_size=20,
+        weather_font_size=18,
+    ):
         super().__init__()
 
         self.motion_enabled = motion_enabled
         self.folder_font_size = self._sanitize_font_size(folder_font_size)
         self.filename_font_size = self._sanitize_font_size(filename_font_size)
+        self.weather_font_size = self._sanitize_font_size(weather_font_size)
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
         self.setBackgroundBrush(Qt.GlobalColor.black)
@@ -91,7 +98,7 @@ class ImageViewer(QGraphicsView):
 
         self.metadata_label = QLabel(self)
         self.metadata_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom
         )
         self.metadata_label.setStyleSheet(
             "color: white; background-color: rgba(0, 0, 0, 180);"
@@ -106,13 +113,10 @@ class ImageViewer(QGraphicsView):
         self.weather_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
-        self.weather_label.setStyleSheet(
-            "color: white; background-color: rgba(0, 0, 0, 180);"
-            "padding: 6px 12px; border-radius: 12px;"
-        )
         self.weather_label.setWordWrap(True)
         self.weather_label.setVisible(False)
         self.weather_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._apply_weather_stylesheet()
 
         self.overlay_margin = 20
 
@@ -571,6 +575,15 @@ class ImageViewer(QGraphicsView):
         self._update_metadata_label()
         self._update_overlay_positions()
 
+    def set_weather_font_size(self, font_size):
+        sanitized = self._sanitize_font_size(font_size)
+        if math.isclose(self.weather_font_size, sanitized):
+            return
+        self.weather_font_size = sanitized
+        self._apply_weather_stylesheet()
+        self._update_weather_label()
+        self._update_overlay_positions()
+
     def _update_overlay_positions(self):
         self._update_weather_position()
         self._update_metadata_position()
@@ -616,7 +629,9 @@ class ImageViewer(QGraphicsView):
 
         if segments:
             combined = "<br>".join(segments)
-            self.metadata_label.setText(f"<div style='text-align:left;'>{combined}</div>")
+            self.metadata_label.setText(
+                f"<div style='text-align:center;'>{combined}</div>"
+            )
             self.metadata_label.setVisible(True)
             self.metadata_label.raise_()
         else:
@@ -638,7 +653,13 @@ class ImageViewer(QGraphicsView):
         label_width = self.metadata_label.width()
         label_height = self.metadata_label.height()
 
-        x = self.overlay_margin
+        x = (self.viewport().width() - label_width) / 2
+        min_x = self.overlay_margin
+        max_x = self.viewport().width() - label_width - self.overlay_margin
+        if max_x < min_x:
+            x = min_x
+        else:
+            x = max(min_x, min(x, max_x))
         y = self.viewport().height() - label_height - self.overlay_margin
         self.metadata_label.move(int(x), int(y))
 
@@ -663,6 +684,13 @@ class ImageViewer(QGraphicsView):
         self.weather_label.setVisible(is_visible)
         if is_visible:
             self.weather_label.raise_()
+
+    def _apply_weather_stylesheet(self):
+        self.weather_label.setStyleSheet(
+            "color: white; background-color: rgba(0, 0, 0, 180);"
+            "padding: 6px 12px; border-radius: 12px;"
+            f"font-size: {self.weather_font_size:.1f}pt;"
+        )
 
     def _update_weather_position(self):
         if not self.weather_label.isVisible():

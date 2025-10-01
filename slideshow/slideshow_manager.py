@@ -36,6 +36,7 @@ class SlideshowManager(QWidget):
         motion_enabled=True,
         folder_font_size=24,
         filename_font_size=20,
+        weather_font_size=18,
         transitions=None,
         night_start=None,
         night_end=None,
@@ -52,6 +53,7 @@ class SlideshowManager(QWidget):
         self.motion_enabled = motion_enabled
         self.folder_font_size = folder_font_size
         self.filename_font_size = filename_font_size
+        self.weather_font_size = weather_font_size
         self.current_index = 0
         self.current_image_path = None
         self.images = []
@@ -73,12 +75,14 @@ class SlideshowManager(QWidget):
             motion_enabled=self.motion_enabled,
             folder_font_size=self.folder_font_size,
             filename_font_size=self.filename_font_size,
+            weather_font_size=self.weather_font_size,
         )
         self.viewer.set_available_transitions(self.transitions)
         self.viewer.set_weather_overlay(None)
         self.viewer.set_metadata_font_sizes(
             self.folder_font_size, self.filename_font_size
         )
+        self.viewer.set_weather_font_size(self.weather_font_size)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
