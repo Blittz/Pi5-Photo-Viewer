@@ -195,7 +195,7 @@ class ImageViewer(QGraphicsView):
         self._weather_text = ""
         self._weather_icon_key = None
         self._weather_icon_pixmap = QPixmap()
-        self._weather_icon_size = 64
+        self._weather_icon_size = 128
         self._icon_cache = {}
         self._pending_icon_reply = None
         self._pending_icon_key = None

@@ -12,7 +12,7 @@
     "duration": 10,
     "overlay_folder_font_size": 48,
     "overlay_date_font_size": 19,
-    "overlay_weather_font_size": 24,
+    "overlay_weather_font_size": 23,
     "overlay_title_font_size": 48,
     "transitions": [
         "crossfade",

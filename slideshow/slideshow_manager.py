@@ -274,11 +274,13 @@ class SlideshowManager(QWidget):
             lines.append(temperature_line)
 
         humidity_line = self._format_humidity_line(payload)
-        if humidity_line:
-            lines.append(humidity_line)
-
         wind_line = self._format_wind_line(payload)
-        if wind_line:
+
+        if humidity_line and wind_line:
+            lines.append(f"{humidity_line}   {wind_line}")
+        elif humidity_line:
+            lines.append(humidity_line)
+        elif wind_line:
             lines.append(wind_line)
 
         sun_line = self._format_solar_line(payload)
