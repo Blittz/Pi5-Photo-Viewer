@@ -49,6 +49,8 @@ class MainWindow(QWidget):
 
         # Folder list
         self.folder_list = QListWidget()
+        self.folder_list.setWordWrap(False)
+        self.folder_list.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         layout.addWidget(QLabel("Selected Folders:"))
         layout.addWidget(self.folder_list)
 
