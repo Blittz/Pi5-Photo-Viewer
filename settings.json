@@ -11,7 +11,7 @@
     "motion": true,
     "duration": 10,
     "overlay_folder_font_size": 48,
-    "overlay_filename_font_size": 19,
+    "overlay_date_font_size": 19,
     "overlay_weather_font_size": 40,
     "overlay_title_font_size": 48,
     "transitions": [

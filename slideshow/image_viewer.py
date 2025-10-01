@@ -3,6 +3,7 @@ import math
 import random
 import os
 import html
+from datetime import datetime
 from dataclasses import asdict, is_dataclass
 
 from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation, QEasingCurve, QPointF
@@ -14,6 +15,8 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QLabel,
 )
+
+from PIL import Image, ExifTags
 
 SUPPORTED_TRANSITIONS = [
     "crossfade",
@@ -27,20 +30,23 @@ SUPPORTED_TRANSITIONS = [
 
 SUPPORTED_TRANSITIONS_SET = set(SUPPORTED_TRANSITIONS)
 
+EXIF_DATE_TAG_NAMES = ("DateTimeOriginal", "DateTimeDigitized", "DateTime")
+EXIF_TAG_NAME_TO_ID = {name: tag for tag, name in ExifTags.TAGS.items()}
+
 
 class ImageViewer(QGraphicsView):
     def __init__(
         self,
         motion_enabled=True,
         folder_font_size=24,
-        filename_font_size=20,
+        date_font_size=20,
         weather_font_size=18,
     ):
         super().__init__()
 
         self.motion_enabled = motion_enabled
         self.folder_font_size = self._sanitize_font_size(folder_font_size)
-        self.filename_font_size = self._sanitize_font_size(filename_font_size)
+        self.date_font_size = self._sanitize_font_size(date_font_size)
         self.weather_font_size = self._sanitize_font_size(weather_font_size)
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
@@ -122,7 +128,7 @@ class ImageViewer(QGraphicsView):
         self.overlay_margin = 20
 
         self._photo_folder_text = ""
-        self._photo_filename_text = ""
+        self._photo_date_text = ""
         self._weather_text = ""
 
     def show_black_screen(self):
@@ -136,7 +142,7 @@ class ImageViewer(QGraphicsView):
         self.pixmap_item.setPixmap(empty_pixmap)
         self.next_pixmap_item.setPixmap(empty_pixmap)
         self._photo_folder_text = ""
-        self._photo_filename_text = ""
+        self._photo_date_text = ""
         self._weather_text = ""
         self._update_metadata_label()
         self._update_weather_label()
@@ -155,7 +161,7 @@ class ImageViewer(QGraphicsView):
         pixmap = QPixmap(image_path)
         if pixmap.isNull():
             self._photo_folder_text = ""
-            self._photo_filename_text = ""
+            self._photo_date_text = ""
             self._update_metadata_label()
             return
 
@@ -564,16 +570,16 @@ class ImageViewer(QGraphicsView):
 
         self.apply_motion_progress(0.0)
 
-    def set_metadata_font_sizes(self, folder_font_size, filename_font_size):
+    def set_metadata_font_sizes(self, folder_font_size, date_font_size):
         sanitized_folder = self._sanitize_font_size(folder_font_size)
-        sanitized_filename = self._sanitize_font_size(filename_font_size)
+        sanitized_date = self._sanitize_font_size(date_font_size)
         if (
             math.isclose(self.folder_font_size, sanitized_folder)
-            and math.isclose(self.filename_font_size, sanitized_filename)
+            and math.isclose(self.date_font_size, sanitized_date)
         ):
             return
         self.folder_font_size = sanitized_folder
-        self.filename_font_size = sanitized_filename
+        self.date_font_size = sanitized_date
         self._update_metadata_label()
         self._update_overlay_positions()
 
@@ -611,7 +617,7 @@ class ImageViewer(QGraphicsView):
 
     def _update_metadata_label(self):
         folder_text = self._photo_folder_text.strip()
-        filename_text = self._photo_filename_text.strip()
+        date_text = self._photo_date_text.strip()
 
         max_width = self._calculate_metadata_max_width()
         available_width = None
@@ -629,14 +635,14 @@ class ImageViewer(QGraphicsView):
                     html.escape(display_folder),
                 )
             )
-        if filename_text:
-            display_filename = self._elide_metadata_text(
-                filename_text, self.filename_font_size, available_width
+        if date_text:
+            display_date = self._elide_metadata_text(
+                date_text, self.date_font_size, available_width
             )
             segments.append(
                 "<div style=\"font-size:{:.1f}pt;\">{}</div>".format(
-                    self.filename_font_size,
-                    html.escape(display_filename),
+                    self.date_font_size,
+                    html.escape(display_date),
                 )
             )
 
@@ -678,9 +684,81 @@ class ImageViewer(QGraphicsView):
 
     def _set_photo_metadata(self, image_path):
         folder_name = os.path.basename(os.path.dirname(image_path))
-        file_name = os.path.basename(image_path)
+        photo_date = self._extract_photo_date(image_path)
+        if not photo_date:
+            try:
+                timestamp = os.path.getmtime(image_path)
+            except (OSError, ValueError):
+                timestamp = None
+            if timestamp is not None:
+                photo_date = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
         self._photo_folder_text = folder_name or ""
-        self._photo_filename_text = file_name or ""
+        self._photo_date_text = photo_date or ""
+
+    def _extract_photo_date(self, image_path):
+        try:
+            with Image.open(image_path) as img:
+                if hasattr(img, "getexif"):
+                    exif_data = img.getexif()
+                else:
+                    exif_data = img._getexif()
+        except Exception:
+            return ""
+
+        if not exif_data:
+            return ""
+
+        for tag_name in EXIF_DATE_TAG_NAMES:
+            tag_id = EXIF_TAG_NAME_TO_ID.get(tag_name)
+            if tag_id is None:
+                continue
+            value = exif_data.get(tag_id)
+            formatted = self._format_exif_datetime(value)
+            if formatted:
+                return formatted
+        return ""
+
+    @staticmethod
+    def _format_exif_datetime(value):
+        if value is None:
+            return ""
+
+        if isinstance(value, bytes):
+            try:
+                value = value.decode("utf-8", errors="ignore")
+            except Exception:
+                try:
+                    value = value.decode(errors="ignore")
+                except Exception:
+                    return ""
+
+        text = str(value).strip()
+        if not text:
+            return ""
+
+        replacements = {"/": "-", "T": " ", "\u0000": ""}
+        for src, dst in replacements.items():
+            text = text.replace(src, dst)
+
+        datetime_formats = [
+            "%Y:%m:%d %H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y:%m:%d %H:%M",
+            "%Y-%m-%d %H:%M",
+            "%Y:%m:%d",
+            "%Y-%m-%d",
+        ]
+
+        for fmt in datetime_formats:
+            try:
+                parsed = datetime.strptime(text, fmt)
+                if "%H" in fmt:
+                    return parsed.strftime("%Y-%m-%d %H:%M")
+                return parsed.strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+
+        return text
 
     def _elide_metadata_text(self, text, point_size, max_width):
         if not text:

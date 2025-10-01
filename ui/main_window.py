@@ -159,23 +159,23 @@ class MainWindow(QWidget):
 
         layout.addLayout(folder_font_layout)
 
-        # Filename font size slider
-        filename_font_layout = QHBoxLayout()
-        filename_font_label = QLabel("Filename Font Size (pt):")
-        self.filename_font_slider = QSlider(Qt.Orientation.Horizontal)
-        self.filename_font_slider.setRange(12, 48)
-        self.filename_font_slider.setValue(20)
-        self.filename_font_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.filename_font_slider.setTickInterval(2)
-        self.filename_font_slider.valueChanged.connect(self.update_filename_font_label)
+        # Photo date font size slider
+        date_font_layout = QHBoxLayout()
+        date_font_label = QLabel("Photo Date Font Size (pt):")
+        self.date_font_slider = QSlider(Qt.Orientation.Horizontal)
+        self.date_font_slider.setRange(12, 48)
+        self.date_font_slider.setValue(20)
+        self.date_font_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.date_font_slider.setTickInterval(2)
+        self.date_font_slider.valueChanged.connect(self.update_date_font_label)
 
-        self.filename_font_display = QLabel()
-        self.update_filename_font_label()
-        filename_font_layout.addWidget(filename_font_label)
-        filename_font_layout.addWidget(self.filename_font_slider)
-        filename_font_layout.addWidget(self.filename_font_display)
+        self.date_font_display = QLabel()
+        self.update_date_font_label()
+        date_font_layout.addWidget(date_font_label)
+        date_font_layout.addWidget(self.date_font_slider)
+        date_font_layout.addWidget(self.date_font_display)
 
-        layout.addLayout(filename_font_layout)
+        layout.addLayout(date_font_layout)
 
         # Weather font size slider
         weather_font_layout = QHBoxLayout()
@@ -268,7 +268,7 @@ class MainWindow(QWidget):
         duration = self.duration_slider.value()
         motion_enabled = self.motion_checkbox.isChecked()
         folder_font_size = self.folder_font_slider.value()
-        filename_font_size = self.filename_font_slider.value()
+        date_font_size = self.date_font_slider.value()
         weather_font_size = self.weather_font_slider.value()
         selected_transitions = [
             key for key, checkbox in self.transition_checkboxes.items() if checkbox.isChecked()
@@ -294,7 +294,7 @@ class MainWindow(QWidget):
             duration=duration,
             motion_enabled=motion_enabled,
             folder_font_size=folder_font_size,
-            filename_font_size=filename_font_size,
+            date_font_size=date_font_size,
             weather_font_size=weather_font_size,
             transitions=selected_transitions,
             night_start=night_start,
@@ -314,7 +314,9 @@ class MainWindow(QWidget):
         motion = data.get("motion", True)
         duration = data.get("duration", 5)
         folder_font_size = data.get("overlay_folder_font_size")
-        filename_font_size = data.get("overlay_filename_font_size")
+        date_font_size = data.get("overlay_date_font_size")
+        if date_font_size is None:
+            date_font_size = data.get("overlay_filename_font_size")
         weather_font_size = data.get("overlay_weather_font_size")
         legacy_title_font_size = data.get("overlay_title_font_size")
 
@@ -336,13 +338,13 @@ class MainWindow(QWidget):
         else:
             folder_font_size = coerce_font_value(folder_font_size, 24)
 
-        if filename_font_size is None:
+        if date_font_size is None:
             if legacy_title_font_size is not None:
-                filename_font_size = max(12, coerce_font_value(legacy_title_font_size, 24) - 4)
+                date_font_size = max(12, coerce_font_value(legacy_title_font_size, 24) - 4)
             else:
-                filename_font_size = max(12, folder_font_size - 4)
+                date_font_size = max(12, folder_font_size - 4)
         else:
-            filename_font_size = coerce_font_value(filename_font_size, max(12, folder_font_size - 4))
+            date_font_size = coerce_font_value(date_font_size, max(12, folder_font_size - 4))
 
         if weather_font_size is None:
             weather_font_size = 18
@@ -360,10 +362,10 @@ class MainWindow(QWidget):
             self.folder_font_slider.minimum(),
             min(self.folder_font_slider.maximum(), folder_value),
         )
-        filename_value = int(round(filename_font_size))
-        filename_value = max(
-            self.filename_font_slider.minimum(),
-            min(self.filename_font_slider.maximum(), filename_value),
+        date_value = int(round(date_font_size))
+        date_value = max(
+            self.date_font_slider.minimum(),
+            min(self.date_font_slider.maximum(), date_value),
         )
         weather_value = int(round(weather_font_size))
         weather_value = max(
@@ -371,10 +373,10 @@ class MainWindow(QWidget):
             min(self.weather_font_slider.maximum(), weather_value),
         )
         self.folder_font_slider.setValue(folder_value)
-        self.filename_font_slider.setValue(filename_value)
+        self.date_font_slider.setValue(date_value)
         self.weather_font_slider.setValue(weather_value)
         self.update_folder_font_label()
-        self.update_filename_font_label()
+        self.update_date_font_label()
         self.update_weather_font_label()
 
         weather_enabled = data.get("weather_enabled", False)
@@ -435,7 +437,7 @@ class MainWindow(QWidget):
             "motion": self.motion_checkbox.isChecked(),
             "duration": self.duration_slider.value(),
             "overlay_folder_font_size": self.folder_font_slider.value(),
-            "overlay_filename_font_size": self.filename_font_slider.value(),
+            "overlay_date_font_size": self.date_font_slider.value(),
             "overlay_weather_font_size": self.weather_font_slider.value(),
             "overlay_title_font_size": self.folder_font_slider.value(),
             "transitions": self.normalize_transition_keys([
@@ -458,8 +460,8 @@ class MainWindow(QWidget):
     def update_folder_font_label(self):
         self.folder_font_display.setText(f"{self.folder_font_slider.value()} pt")
 
-    def update_filename_font_label(self):
-        self.filename_font_display.setText(f"{self.filename_font_slider.value()} pt")
+    def update_date_font_label(self):
+        self.date_font_display.setText(f"{self.date_font_slider.value()} pt")
 
     def update_weather_font_label(self):
         self.weather_font_display.setText(f"{self.weather_font_slider.value()} pt")
