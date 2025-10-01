@@ -872,6 +872,7 @@ class ImageViewer(QGraphicsView):
             "background-color: rgba(0, 0, 0, 180); border-radius: 12px;"
         )
         self.weather_text_label.setStyleSheet(
+            "background-color: transparent; "
             f"color: white; font-size: {self.weather_font_size:.1f}pt;"
         )
         self.weather_icon_label.setStyleSheet("background: transparent;")
