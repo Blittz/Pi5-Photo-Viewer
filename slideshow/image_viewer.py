@@ -3,7 +3,7 @@ import math
 import random
 import os
 import html
-from datetime import datetime
+from datetime import datetime, date
 from dataclasses import asdict, is_dataclass
 
 from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation, QEasingCurve, QPointF
@@ -691,7 +691,8 @@ class ImageViewer(QGraphicsView):
             except (OSError, ValueError):
                 timestamp = None
             if timestamp is not None:
-                photo_date = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+                fallback_dt = datetime.fromtimestamp(timestamp)
+                photo_date = self._format_display_date(fallback_dt)
         self._photo_folder_text = folder_name or ""
         self._photo_date_text = photo_date or ""
 
@@ -723,6 +724,14 @@ class ImageViewer(QGraphicsView):
         if value is None:
             return ""
 
+        if isinstance(value, datetime):
+            return ImageViewer._format_display_date(value)
+
+        if isinstance(value, date):
+            return ImageViewer._format_display_date(
+                datetime(value.year, value.month, value.day)
+            )
+
         if isinstance(value, bytes):
             try:
                 value = value.decode("utf-8", errors="ignore")
@@ -752,13 +761,23 @@ class ImageViewer(QGraphicsView):
         for fmt in datetime_formats:
             try:
                 parsed = datetime.strptime(text, fmt)
-                if "%H" in fmt:
-                    return parsed.strftime("%Y-%m-%d %H:%M")
-                return parsed.strftime("%Y-%m-%d")
+                return ImageViewer._format_display_date(parsed)
             except ValueError:
                 continue
 
         return text
+
+    @staticmethod
+    def _format_display_date(value):
+        if isinstance(value, datetime):
+            dt = value
+        elif isinstance(value, date):
+            dt = datetime(value.year, value.month, value.day)
+        else:
+            return ""
+
+        month = dt.strftime("%B")
+        return f"{month} {dt.day}, {dt.year}"
 
     def _elide_metadata_text(self, text, point_size, max_width):
         if not text:
