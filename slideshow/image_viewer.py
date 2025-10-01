@@ -6,7 +6,15 @@ import html
 from datetime import datetime, date
 from dataclasses import asdict, is_dataclass
 
-from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation, QEasingCurve, QPointF
+from PyQt6.QtCore import (
+    Qt,
+    QTimer,
+    QRectF,
+    QVariantAnimation,
+    QEasingCurve,
+    QPointF,
+    QUrl,
+)
 from PyQt6.QtGui import QPixmap, QTransform, QPainter, QFont, QFontMetrics
 from PyQt6.QtWidgets import (
     QGraphicsView,
@@ -14,7 +22,10 @@ from PyQt6.QtWidgets import (
     QGraphicsPixmapItem,
     QSizePolicy,
     QLabel,
+    QWidget,
+    QHBoxLayout,
 )
+from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
 from PIL import Image, ExifTags
 
@@ -116,13 +127,36 @@ class ImageViewer(QGraphicsView):
         self.metadata_label.setTextFormat(Qt.TextFormat.RichText)
         self.metadata_horizontal_padding = 28  # matches padding: 6px 14px
 
-        self.weather_label = QLabel(self)
-        self.weather_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        self.weather_container = QWidget(self)
+        self.weather_container.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents
         )
-        self.weather_label.setWordWrap(True)
-        self.weather_label.setVisible(False)
-        self.weather_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.weather_container.setVisible(False)
+
+        self.weather_layout = QHBoxLayout(self.weather_container)
+        self.weather_layout.setContentsMargins(12, 10, 12, 10)
+        self.weather_layout.setSpacing(10)
+
+        self.weather_icon_label = QLabel(self.weather_container)
+        self.weather_icon_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.weather_icon_label.setVisible(False)
+        self.weather_icon_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents
+        )
+        self.weather_layout.addWidget(self.weather_icon_label)
+
+        self.weather_text_label = QLabel(self.weather_container)
+        self.weather_text_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.weather_text_label.setWordWrap(True)
+        self.weather_text_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents
+        )
+        self.weather_layout.addWidget(self.weather_text_label)
+
         self._apply_weather_stylesheet()
 
         self.overlay_margin = 20
@@ -130,6 +164,13 @@ class ImageViewer(QGraphicsView):
         self._photo_folder_text = ""
         self._photo_date_text = ""
         self._weather_text = ""
+        self._weather_icon_key = None
+        self._weather_icon_pixmap = QPixmap()
+        self._weather_icon_size = 64
+        self._icon_cache = {}
+        self._pending_icon_reply = None
+        self._pending_icon_key = None
+        self._network_manager = QNetworkAccessManager(self)
 
     def show_black_screen(self):
         self.motion_timer.stop()
@@ -144,8 +185,11 @@ class ImageViewer(QGraphicsView):
         self._photo_folder_text = ""
         self._photo_date_text = ""
         self._weather_text = ""
+        self._weather_icon_key = None
+        self._cancel_pending_icon_request()
+        self._clear_weather_icon()
         self._update_metadata_label()
-        self._update_weather_label()
+        self._update_weather_display()
 
         self.scene.setSceneRect(QRectF(self.viewport().rect()))
         self.viewport().update()
@@ -589,7 +633,7 @@ class ImageViewer(QGraphicsView):
             return
         self.weather_font_size = sanitized
         self._apply_weather_stylesheet()
-        self._update_weather_label()
+        self._update_weather_display()
         self._update_overlay_positions()
 
     def _update_overlay_positions(self):
@@ -791,43 +835,115 @@ class ImageViewer(QGraphicsView):
         return metrics.elidedText(text, Qt.TextElideMode.ElideMiddle, int(max_width))
 
     def set_weather_overlay(self, weather):
-        text = self._normalize_weather_text(weather)
-        if text == self._weather_text:
-            return
+        text, icon_hint = self._normalize_weather_overlay(weather)
+        icon_key, icon_url = self._resolve_icon_sources(icon_hint)
+
+        text_changed = text != self._weather_text
+        icon_changed = icon_key != self._weather_icon_key
+
         self._weather_text = text
-        self._update_weather_label()
+
+        if icon_changed:
+            self._set_weather_icon(icon_key, icon_url)
+        elif text_changed:
+            self._update_weather_display()
+
+    def _update_weather_display(self):
+        display_text = (self._weather_text or "").strip()
+        has_text = bool(display_text)
+
+        self.weather_text_label.setText(display_text)
+        self.weather_text_label.setVisible(has_text)
+
+        has_icon = not self._weather_icon_pixmap.isNull()
+        if has_icon:
+            self.weather_icon_label.setPixmap(self._weather_icon_pixmap)
+        self.weather_icon_label.setVisible(has_icon)
+
+        should_show = has_text or has_icon
+        self.weather_container.setVisible(should_show)
+        if should_show:
+            self.weather_container.raise_()
+
         self._update_overlay_positions()
 
-    def _update_weather_label(self):
-        weather_text = self._weather_text.strip()
-        self.weather_label.setText(weather_text)
-        is_visible = bool(weather_text)
-        self.weather_label.setVisible(is_visible)
-        if is_visible:
-            self.weather_label.raise_()
-
     def _apply_weather_stylesheet(self):
-        self.weather_label.setStyleSheet(
-            "color: white; background-color: rgba(0, 0, 0, 180);"
-            "padding: 6px 12px; border-radius: 12px;"
-            f"font-size: {self.weather_font_size:.1f}pt;"
+        self.weather_container.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 180); border-radius: 12px;"
         )
+        self.weather_text_label.setStyleSheet(
+            f"color: white; font-size: {self.weather_font_size:.1f}pt;"
+        )
+        self.weather_icon_label.setStyleSheet("background: transparent;")
 
     def _update_weather_position(self):
-        if not self.weather_label.isVisible():
+        if not self.weather_container.isVisible():
             return
 
         max_width = max(0, self.viewport().width() - self.overlay_margin * 2)
         if max_width <= 0:
-            self.weather_label.setVisible(False)
+            self.weather_container.setVisible(False)
             return
 
-        self.weather_label.setMaximumWidth(max_width)
-        self.weather_label.adjustSize()
+        margins = self.weather_layout.contentsMargins()
+        icon_width = (
+            self.weather_icon_label.width() if self.weather_icon_label.isVisible() else 0
+        )
+        spacing = (
+            self.weather_layout.spacing()
+            if self.weather_icon_label.isVisible() and self.weather_text_label.isVisible()
+            else 0
+        )
+        text_max_width = max_width - margins.left() - margins.right() - icon_width - spacing
+        if text_max_width < 0:
+            text_max_width = 0
+
+        if self.weather_text_label.isVisible():
+            self.weather_text_label.setMaximumWidth(text_max_width or max_width)
+        else:
+            self.weather_text_label.setMaximumWidth(0)
+
+        self.weather_container.setMaximumWidth(max_width)
+        self.weather_container.adjustSize()
 
         x = self.overlay_margin
         y = self.overlay_margin
-        self.weather_label.move(int(x), int(y))
+        self.weather_container.move(int(x), int(y))
+
+    def _normalize_weather_overlay(self, weather):
+        if weather is None:
+            return "", None
+        if isinstance(weather, str):
+            return weather.strip(), None
+        if is_dataclass(weather):
+            weather = asdict(weather)
+
+        if isinstance(weather, dict):
+            icon_hint = None
+            if "text" in weather:
+                text_value = str(weather.get("text") or "").strip()
+                icon_hint = (
+                    weather.get("icon")
+                    or weather.get("icon_code")
+                    or weather.get("icon_url")
+                )
+            else:
+                text_value = ImageViewer._normalize_weather_text(weather)
+                icon_hint = weather.get("icon")
+
+            if isinstance(icon_hint, dict):
+                icon_hint = icon_hint.get("url") or icon_hint.get("code")
+
+            if not text_value:
+                text_value = ImageViewer._normalize_weather_text(weather)
+
+            icon_hint = str(icon_hint).strip() if isinstance(icon_hint, str) else None
+            if icon_hint == "":
+                icon_hint = None
+
+            return text_value, icon_hint
+
+        return str(weather).strip(), None
 
     @staticmethod
     def _normalize_weather_text(weather):
@@ -850,6 +966,121 @@ class ImageViewer(QGraphicsView):
                 parts.append(str(extra))
             return " – ".join(part for part in parts if part).strip()
         return str(weather).strip()
+
+    def _resolve_icon_sources(self, icon_hint):
+        if not icon_hint:
+            return None, None
+
+        hint = icon_hint.strip()
+        if not hint:
+            return None, None
+
+        if hint.startswith("http://") or hint.startswith("https://"):
+            return hint, hint
+
+        return hint, f"https://openweathermap.org/img/wn/{hint}@2x.png"
+
+    def _set_weather_icon(self, icon_key, icon_url):
+        self._cancel_pending_icon_request()
+
+        if not icon_key or not icon_url:
+            self._weather_icon_key = None
+            self._clear_weather_icon()
+            self._update_weather_display()
+            return
+
+        self._weather_icon_key = icon_key
+
+        cached = self._icon_cache.get(icon_key)
+        if isinstance(cached, QPixmap) and not cached.isNull():
+            self._apply_weather_icon(cached)
+            self._update_weather_display()
+            return
+
+        url = QUrl(icon_url)
+        if not url.isValid():
+            self._weather_icon_key = None
+            self._clear_weather_icon()
+            self._update_weather_display()
+            return
+
+        request = QNetworkRequest(url)
+        self._pending_icon_reply = self._network_manager.get(request)
+        self._pending_icon_key = icon_key
+        self._pending_icon_reply.finished.connect(self._on_icon_download_finished)  # type: ignore[arg-type]
+        self._update_weather_display()
+
+    def _apply_weather_icon(self, pixmap):
+        if pixmap.isNull():
+            self._clear_weather_icon()
+            return
+
+        target_size = int(self._weather_icon_size)
+        scaled = pixmap.scaled(
+            target_size,
+            target_size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self._weather_icon_pixmap = scaled
+        self.weather_icon_label.setPixmap(scaled)
+        self.weather_icon_label.setFixedSize(target_size, target_size)
+        self.weather_icon_label.setVisible(True)
+
+    def _clear_weather_icon(self):
+        self._weather_icon_pixmap = QPixmap()
+        self.weather_icon_label.clear()
+        self.weather_icon_label.setVisible(False)
+
+    def _cancel_pending_icon_request(self):
+        if self._pending_icon_reply is None:
+            return
+        try:
+            self._pending_icon_reply.finished.disconnect(self._on_icon_download_finished)  # type: ignore[arg-type]
+        except TypeError:
+            pass
+        self._pending_icon_reply.abort()
+        self._pending_icon_reply.deleteLater()
+        self._pending_icon_reply = None
+        self._pending_icon_key = None
+
+    def _on_icon_download_finished(self):
+        reply = self.sender()
+        if not isinstance(reply, QNetworkReply):
+            return
+
+        if reply is not self._pending_icon_reply:
+            reply.deleteLater()
+            return
+
+        icon_key = self._pending_icon_key
+        self._pending_icon_reply = None
+        self._pending_icon_key = None
+
+        if reply.error() != QNetworkReply.NetworkError.NoError:
+            reply.deleteLater()
+            if icon_key == self._weather_icon_key:
+                self._weather_icon_key = None
+                self._clear_weather_icon()
+                self._update_weather_display()
+            return
+
+        data = bytes(reply.readAll())
+        reply.deleteLater()
+
+        pixmap = QPixmap()
+        if not pixmap.loadFromData(data):
+            if icon_key == self._weather_icon_key:
+                self._weather_icon_key = None
+                self._clear_weather_icon()
+                self._update_weather_display()
+            return
+
+        self._icon_cache[icon_key] = pixmap
+
+        if icon_key == self._weather_icon_key:
+            self._apply_weather_icon(pixmap)
+            self._update_weather_display()
 
     @staticmethod
     def _sanitize_font_size(font_size):

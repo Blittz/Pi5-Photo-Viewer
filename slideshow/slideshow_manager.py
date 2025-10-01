@@ -240,18 +240,24 @@ class SlideshowManager(QWidget):
         if success:
             self._weather_last_success = datetime.now()
             weather_text = self._format_weather_text(payload, self._weather_last_success)
-            self.viewer.set_weather_overlay(weather_text)
+            icon_code = None
+            if isinstance(payload, dict):
+                icon_code = payload.get("icon")
+            overlay = {"text": weather_text}
+            if icon_code:
+                overlay["icon"] = icon_code
+            self.viewer.set_weather_overlay(overlay)
             return
 
         if self._weather_last_success is None:
-            self.viewer.set_weather_overlay("")
+            self.viewer.set_weather_overlay(None)
             return
 
         error_message = ""
         if isinstance(payload, dict):
             error_message = payload.get("error", "")
         stale_text = self._format_stale_weather_text(error_message, self._weather_last_success)
-        self.viewer.set_weather_overlay(stale_text)
+        self.viewer.set_weather_overlay({"text": stale_text})
 
     def _format_weather_text(self, payload, timestamp):
         if not isinstance(payload, dict):
