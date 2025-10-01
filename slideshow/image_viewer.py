@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QWidget,
     QHBoxLayout,
+    QVBoxLayout,
 )
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
@@ -133,9 +134,25 @@ class ImageViewer(QGraphicsView):
         )
         self.weather_container.setVisible(False)
 
-        self.weather_layout = QHBoxLayout(self.weather_container)
+        self.weather_layout = QVBoxLayout(self.weather_container)
         self.weather_layout.setContentsMargins(12, 10, 12, 10)
-        self.weather_layout.setSpacing(10)
+        self.weather_layout.setSpacing(6)
+
+        self.weather_header_layout = QHBoxLayout()
+        self.weather_header_layout.setContentsMargins(0, 0, 0, 0)
+        self.weather_header_layout.setSpacing(10)
+        self.weather_layout.addLayout(self.weather_header_layout)
+
+        self.weather_location_label = QLabel(self.weather_container)
+        self.weather_location_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
+        self.weather_location_label.setWordWrap(True)
+        self.weather_location_label.setVisible(False)
+        self.weather_location_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents
+        )
+        self.weather_header_layout.addWidget(self.weather_location_label)
 
         self.weather_icon_label = QLabel(self.weather_container)
         self.weather_icon_label.setAlignment(
@@ -145,11 +162,23 @@ class ImageViewer(QGraphicsView):
         self.weather_icon_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents
         )
-        self.weather_layout.addWidget(self.weather_icon_label)
+        self.weather_header_layout.addWidget(self.weather_icon_label)
+
+        self.weather_condition_label = QLabel(self.weather_container)
+        self.weather_condition_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
+        self.weather_condition_label.setWordWrap(True)
+        self.weather_condition_label.setVisible(False)
+        self.weather_condition_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents
+        )
+        self.weather_header_layout.addWidget(self.weather_condition_label)
+        self.weather_header_layout.addStretch(1)
 
         self.weather_text_label = QLabel(self.weather_container)
         self.weather_text_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
         self.weather_text_label.setWordWrap(True)
         self.weather_text_label.setAttribute(
@@ -850,17 +879,64 @@ class ImageViewer(QGraphicsView):
 
     def _update_weather_display(self):
         display_text = (self._weather_text or "").strip()
-        has_text = bool(display_text)
-
-        self.weather_text_label.setText(display_text)
-        self.weather_text_label.setVisible(has_text)
-
+        lines = [line.strip() for line in display_text.splitlines() if line.strip()]
         has_icon = not self._weather_icon_pixmap.isNull()
         if has_icon:
             self.weather_icon_label.setPixmap(self._weather_icon_pixmap)
         self.weather_icon_label.setVisible(has_icon)
 
-        should_show = has_text or has_icon
+        location_text = ""
+        condition_text = ""
+        body_lines = []
+
+        if lines:
+            candidate_header = lines[0]
+            header_location = ""
+            header_condition = ""
+
+            for separator in (" – ", " - ", " — "):
+                if separator in candidate_header:
+                    left, right = candidate_header.split(separator, 1)
+                    header_location = left.strip()
+                    header_condition = right.strip()
+                    break
+
+            if not header_location and not header_condition:
+                if has_icon or len(lines) > 1:
+                    header_location = candidate_header.strip()
+                else:
+                    body_lines = lines
+
+            if header_location or header_condition:
+                location_text = header_location
+                condition_text = header_condition
+                if not body_lines:
+                    body_lines = lines[1:]
+        if not body_lines and not location_text and not condition_text:
+            body_lines = lines
+
+        if location_text and (condition_text or has_icon):
+            location_display = f"{location_text} -"
+        else:
+            location_display = location_text
+
+        body_text = "\n".join(body_lines)
+
+        self.weather_location_label.setText(location_display)
+        self.weather_location_label.setVisible(bool(location_display))
+
+        self.weather_condition_label.setText(condition_text)
+        self.weather_condition_label.setVisible(bool(condition_text))
+
+        self.weather_text_label.setText(body_text)
+        self.weather_text_label.setVisible(bool(body_text))
+
+        should_show = (
+            self.weather_location_label.isVisible()
+            or self.weather_condition_label.isVisible()
+            or self.weather_text_label.isVisible()
+            or has_icon
+        )
         self.weather_container.setVisible(should_show)
         if should_show:
             self.weather_container.raise_()
@@ -871,6 +947,12 @@ class ImageViewer(QGraphicsView):
         self.weather_container.setStyleSheet(
             "background-color: rgba(0, 0, 0, 180); border-radius: 12px;"
         )
+        header_style = (
+            "background-color: transparent; "
+            f"color: white; font-size: {self.weather_font_size:.1f}pt;"
+        )
+        self.weather_location_label.setStyleSheet(header_style + " font-weight: 600;")
+        self.weather_condition_label.setStyleSheet(header_style)
         self.weather_text_label.setStyleSheet(
             "background-color: transparent; "
             f"color: white; font-size: {self.weather_font_size:.1f}pt;"
@@ -887,22 +969,19 @@ class ImageViewer(QGraphicsView):
             return
 
         margins = self.weather_layout.contentsMargins()
-        icon_width = (
-            self.weather_icon_label.width() if self.weather_icon_label.isVisible() else 0
-        )
-        spacing = (
-            self.weather_layout.spacing()
-            if self.weather_icon_label.isVisible() and self.weather_text_label.isVisible()
-            else 0
-        )
-        text_max_width = max_width - margins.left() - margins.right() - icon_width - spacing
-        if text_max_width < 0:
-            text_max_width = 0
+        content_width = max_width - margins.left() - margins.right()
+        if content_width < 0:
+            content_width = 0
 
-        if self.weather_text_label.isVisible():
-            self.weather_text_label.setMaximumWidth(text_max_width or max_width)
-        else:
-            self.weather_text_label.setMaximumWidth(0)
+        for label in (
+            self.weather_location_label,
+            self.weather_condition_label,
+            self.weather_text_label,
+        ):
+            if label.isVisible():
+                label.setMaximumWidth(content_width or max_width)
+            else:
+                label.setMaximumWidth(0)
 
         self.weather_container.setMaximumWidth(max_width)
         self.weather_container.adjustSize()
