@@ -19,12 +19,32 @@ class WeatherSummary:
 
     condition: Optional[str]
     temperature: Optional[float]
+    feels_like: Optional[float]
+    humidity: Optional[float]
+    wind_speed: Optional[float]
+    wind_direction: Optional[float]
+    sunrise: Optional[int]
+    sunset: Optional[int]
+    timezone_offset: Optional[int]
+    city: Optional[str]
+    region: Optional[str]
+    country: Optional[str]
     icon: Optional[str]
 
     def as_dict(self) -> dict:
         return {
             "condition": self.condition,
             "temperature": self.temperature,
+            "feels_like": self.feels_like,
+            "humidity": self.humidity,
+            "wind_speed": self.wind_speed,
+            "wind_direction": self.wind_direction,
+            "sunrise": self.sunrise,
+            "sunset": self.sunset,
+            "timezone_offset": self.timezone_offset,
+            "city": self.city,
+            "region": self.region,
+            "country": self.country,
             "icon": self.icon,
         }
 
@@ -146,9 +166,72 @@ class WeatherClient(QObject):
 
         main_section = payload.get("main")
         temperature = None
+        feels_like = None
+        humidity = None
         if isinstance(main_section, dict):
             temp_val = main_section.get("temp")
             if isinstance(temp_val, (int, float)):
                 temperature = float(temp_val)
-        return WeatherSummary(condition=condition, temperature=temperature, icon=icon)
+            feels_like_val = main_section.get("feels_like")
+            if isinstance(feels_like_val, (int, float)):
+                feels_like = float(feels_like_val)
+            humidity_val = main_section.get("humidity")
+            if isinstance(humidity_val, (int, float)):
+                humidity = float(humidity_val)
+
+        wind_section = payload.get("wind")
+        wind_speed = None
+        wind_direction = None
+        if isinstance(wind_section, dict):
+            speed_val = wind_section.get("speed")
+            if isinstance(speed_val, (int, float)):
+                wind_speed = float(speed_val)
+            deg_val = wind_section.get("deg")
+            if isinstance(deg_val, (int, float)):
+                wind_direction = float(deg_val)
+
+        sys_section = payload.get("sys")
+        sunrise = None
+        sunset = None
+        country = None
+        region = None
+        if isinstance(sys_section, dict):
+            sunrise_val = sys_section.get("sunrise")
+            if isinstance(sunrise_val, int):
+                sunrise = sunrise_val
+            sunset_val = sys_section.get("sunset")
+            if isinstance(sunset_val, int):
+                sunset = sunset_val
+            country_val = sys_section.get("country")
+            if isinstance(country_val, str):
+                country = country_val.strip()
+            region_val = sys_section.get("state")
+            if isinstance(region_val, str):
+                region = region_val.strip()
+
+        city = payload.get("name")
+        if isinstance(city, str):
+            city = city.strip()
+        else:
+            city = None
+
+        timezone_offset = payload.get("timezone")
+        if not isinstance(timezone_offset, int):
+            timezone_offset = None
+
+        return WeatherSummary(
+            condition=condition,
+            temperature=temperature,
+            feels_like=feels_like,
+            humidity=humidity,
+            wind_speed=wind_speed,
+            wind_direction=wind_direction,
+            sunrise=sunrise,
+            sunset=sunset,
+            timezone_offset=timezone_offset,
+            city=city,
+            region=region,
+            country=country,
+            icon=icon,
+        )
 

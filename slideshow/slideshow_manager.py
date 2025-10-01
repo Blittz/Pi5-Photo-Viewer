@@ -263,21 +263,30 @@ class SlideshowManager(QWidget):
         if not isinstance(payload, dict):
             return str(payload)
 
-        pieces = []
-        temperature = payload.get("temperature")
-        if isinstance(temperature, (int, float)):
-            pieces.append(self._format_temperature(float(temperature)))
+        lines = []
 
-        condition = payload.get("condition")
-        if condition:
-            condition_text = str(condition).strip()
-            if condition_text:
-                pieces.append(condition_text)
+        location_line = self._format_location_line(payload)
+        if location_line:
+            lines.append(location_line)
 
-        main_line = " • ".join(piece for piece in pieces if piece)
-        lines = [main_line] if main_line else []
+        temperature_line = self._format_temperature_line(payload)
+        if temperature_line:
+            lines.append(temperature_line)
+
+        humidity_line = self._format_humidity_line(payload)
+        if humidity_line:
+            lines.append(humidity_line)
+
+        wind_line = self._format_wind_line(payload)
+        if wind_line:
+            lines.append(wind_line)
+
+        sun_line = self._format_solar_line(payload)
+        if sun_line:
+            lines.append(sun_line)
+
         lines.append(f"Updated {self._format_time(timestamp)}")
-        return "\n".join(lines)
+        return "\n".join(line for line in lines if line)
 
     def _format_stale_weather_text(self, error_message, timestamp):
         if error_message:
@@ -289,14 +298,166 @@ class SlideshowManager(QWidget):
         return "\n".join(lines)
 
     def _format_temperature(self, value):
+        if value is None:
+            return ""
+
         unit = self._weather_units.lower()
-        symbol_map = {
-            "metric": "°C",
-            "imperial": "°F",
-            "standard": "K",
-        }
-        symbol = symbol_map.get(unit, "°")
-        return f"{value:.0f}{symbol}"
+        if unit == "imperial":
+            temp_f = value
+        elif unit == "metric":
+            temp_f = (value * 9.0 / 5.0) + 32.0
+        elif unit == "standard":
+            temp_f = ((value - 273.15) * 9.0 / 5.0) + 32.0
+        else:
+            temp_f = value
+        return f"{temp_f:.0f}°F"
+
+    def _format_temperature_line(self, payload):
+        temperature = payload.get("temperature")
+        feels_like = payload.get("feels_like")
+
+        formatted_temp = (
+            self._format_temperature(float(temperature))
+            if isinstance(temperature, (int, float))
+            else ""
+        )
+        formatted_feels_like = (
+            self._format_temperature(float(feels_like))
+            if isinstance(feels_like, (int, float))
+            else ""
+        )
+
+        if not formatted_temp and not formatted_feels_like:
+            return ""
+
+        if formatted_temp and formatted_feels_like:
+            return f"Temperature: {formatted_temp} (Feels like {formatted_feels_like})"
+        if formatted_temp:
+            return f"Temperature: {formatted_temp}"
+        return f"Feels like: {formatted_feels_like}"
+
+    @staticmethod
+    def _format_humidity_line(payload):
+        humidity = payload.get("humidity")
+        if isinstance(humidity, (int, float)):
+            return f"Humidity: {humidity:.0f}%"
+        return ""
+
+    def _format_wind_line(self, payload):
+        speed = payload.get("wind_speed")
+        direction = payload.get("wind_direction")
+
+        formatted_speed = ""
+        if isinstance(speed, (int, float)):
+            formatted_speed = self._format_wind_speed(float(speed))
+
+        formatted_direction = ""
+        if isinstance(direction, (int, float)):
+            formatted_direction = self._format_wind_direction(float(direction))
+
+        if not formatted_speed and not formatted_direction:
+            return ""
+
+        if formatted_speed and formatted_direction:
+            return f"Wind: {formatted_speed} ({formatted_direction})"
+        if formatted_speed:
+            return f"Wind: {formatted_speed}"
+        return f"Wind: {formatted_direction}"
+
+    def _format_wind_speed(self, value):
+        unit = self._weather_units.lower()
+        if unit == "imperial":
+            mph = value
+        else:
+            # OpenWeather returns meters per second for metric/standard units.
+            mph = value * 2.23694
+        return f"{mph:.0f} mph"
+
+    @staticmethod
+    def _format_wind_direction(value):
+        directions = [
+            "N",
+            "NNE",
+            "NE",
+            "ENE",
+            "E",
+            "ESE",
+            "SE",
+            "SSE",
+            "S",
+            "SSW",
+            "SW",
+            "WSW",
+            "W",
+            "WNW",
+            "NW",
+            "NNW",
+        ]
+        index = int((value % 360) / 22.5 + 0.5) % len(directions)
+        return directions[index]
+
+    def _format_solar_line(self, payload):
+        sunrise = payload.get("sunrise")
+        sunset = payload.get("sunset")
+        timezone_offset = payload.get("timezone_offset")
+
+        sunrise_text = (
+            self._format_solar_time(int(sunrise), timezone_offset)
+            if isinstance(sunrise, int)
+            else ""
+        )
+        sunset_text = (
+            self._format_solar_time(int(sunset), timezone_offset)
+            if isinstance(sunset, int)
+            else ""
+        )
+
+        if not sunrise_text and not sunset_text:
+            return ""
+
+        if sunrise_text and sunset_text:
+            return f"Sunrise: {sunrise_text}  Sunset: {sunset_text}"
+        if sunrise_text:
+            return f"Sunrise: {sunrise_text}"
+        return f"Sunset: {sunset_text}"
+
+    def _format_solar_time(self, timestamp_value, timezone_offset):
+        if timezone_offset is None:
+            display_time = datetime.fromtimestamp(timestamp_value)
+        else:
+            display_time = datetime.utcfromtimestamp(timestamp_value + timezone_offset)
+        return self._format_time(display_time)
+
+    def _format_location_line(self, payload):
+        city = payload.get("city") or payload.get("name")
+        region = payload.get("region")
+        country = payload.get("country")
+        condition = payload.get("condition")
+
+        parts = []
+        if isinstance(city, str) and city.strip():
+            parts.append(city.strip())
+
+        region_text = ""
+        if isinstance(region, str) and region.strip():
+            region_text = region.strip()
+        elif isinstance(country, str) and country.strip():
+            region_text = country.strip()
+
+        if region_text:
+            parts.append(region_text)
+
+        if not parts:
+            return ""
+
+        location_text = ", ".join(parts)
+
+        if isinstance(condition, str):
+            condition_text = condition.strip()
+            if condition_text:
+                return f"{location_text} – {condition_text}"
+
+        return location_text
 
     @staticmethod
     def _format_time(timestamp):

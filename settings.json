@@ -12,7 +12,7 @@
     "duration": 10,
     "overlay_folder_font_size": 48,
     "overlay_date_font_size": 19,
-    "overlay_weather_font_size": 40,
+    "overlay_weather_font_size": 24,
     "overlay_title_font_size": 48,
     "transitions": [
         "crossfade",
@@ -25,7 +25,7 @@
     ],
     "weather_enabled": true,
     "weather_api_key": "ad1bf6a441ee384979f30f76b27e1529",
-    "weather_location": "42.3265,122.8756",
+    "weather_location": "Medford,OR,US",
     "weather_units": "imperial",
     "night_mode_enabled": true,
     "night_start": "21:00",
