@@ -6,7 +6,7 @@ import html
 from dataclasses import asdict, is_dataclass
 
 from PyQt6.QtCore import Qt, QTimer, QRectF, QVariantAnimation, QEasingCurve, QPointF
-from PyQt6.QtGui import QPixmap, QTransform, QPainter
+from PyQt6.QtGui import QPixmap, QTransform, QPainter, QFont, QFontMetrics
 from PyQt6.QtWidgets import (
     QGraphicsView,
     QGraphicsScene,
@@ -104,10 +104,11 @@ class ImageViewer(QGraphicsView):
             "color: white; background-color: rgba(0, 0, 0, 180);"
             "padding: 6px 14px; border-radius: 12px;"
         )
-        self.metadata_label.setWordWrap(True)
+        self.metadata_label.setWordWrap(False)
         self.metadata_label.setVisible(False)
         self.metadata_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.metadata_label.setTextFormat(Qt.TextFormat.RichText)
+        self.metadata_horizontal_padding = 28  # matches padding: 6px 14px
 
         self.weather_label = QLabel(self)
         self.weather_label.setAlignment(
@@ -147,6 +148,7 @@ class ImageViewer(QGraphicsView):
         super().resizeEvent(event)
         if not self._current_pixmap.isNull():
             self._fit_pixmap()
+        self._update_metadata_label()
         self._update_overlay_positions()
 
     def set_image(self, image_path, duration=None, transition=None):
@@ -611,26 +613,37 @@ class ImageViewer(QGraphicsView):
         folder_text = self._photo_folder_text.strip()
         filename_text = self._photo_filename_text.strip()
 
+        max_width = self._calculate_metadata_max_width()
+        available_width = None
+        if max_width > 0:
+            available_width = max(0, max_width - self.metadata_horizontal_padding)
+
         segments = []
         if folder_text:
+            display_folder = self._elide_metadata_text(
+                folder_text, self.folder_font_size, available_width
+            )
             segments.append(
-                "<span style=\"font-size:{:.1f}pt; font-weight:600;\">{}</span>".format(
+                "<div style=\"font-size:{:.1f}pt; font-weight:600;\">{}</div>".format(
                     self.folder_font_size,
-                    html.escape(folder_text),
+                    html.escape(display_folder),
                 )
             )
         if filename_text:
+            display_filename = self._elide_metadata_text(
+                filename_text, self.filename_font_size, available_width
+            )
             segments.append(
-                "<span style=\"font-size:{:.1f}pt;\">{}</span>".format(
+                "<div style=\"font-size:{:.1f}pt;\">{}</div>".format(
                     self.filename_font_size,
-                    html.escape(filename_text),
+                    html.escape(display_filename),
                 )
             )
 
         if segments:
-            combined = "<br>".join(segments)
+            combined = "".join(segments)
             self.metadata_label.setText(
-                f"<div style='text-align:center;'>{combined}</div>"
+                f"<div style='text-align:center; white-space:nowrap;'>{combined}</div>"
             )
             self.metadata_label.setVisible(True)
             self.metadata_label.raise_()
@@ -668,6 +681,17 @@ class ImageViewer(QGraphicsView):
         file_name = os.path.basename(image_path)
         self._photo_folder_text = folder_name or ""
         self._photo_filename_text = file_name or ""
+
+    def _elide_metadata_text(self, text, point_size, max_width):
+        if not text:
+            return ""
+        if not max_width or max_width <= 0:
+            return text
+
+        font = QFont(self.metadata_label.font())
+        font.setPointSizeF(point_size)
+        metrics = QFontMetrics(font)
+        return metrics.elidedText(text, Qt.TextElideMode.ElideMiddle, int(max_width))
 
     def set_weather_overlay(self, weather):
         text = self._normalize_weather_text(weather)
