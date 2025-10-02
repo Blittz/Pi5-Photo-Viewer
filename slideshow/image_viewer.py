@@ -195,9 +195,11 @@ class ImageViewer(QGraphicsView):
         self._weather_text = ""
         self._weather_icon_key = None
         self._weather_icon_pixmap = QPixmap()
-        self._weather_icon_size = 128
+        self._weather_icon_size = 0
         self._icon_cache = {}
         self._pending_icon_reply = None
+
+        self._update_weather_icon_size()
         self._pending_icon_key = None
         self._network_manager = QNetworkAccessManager(self)
 
@@ -661,9 +663,41 @@ class ImageViewer(QGraphicsView):
         if math.isclose(self.weather_font_size, sanitized):
             return
         self.weather_font_size = sanitized
+        self._update_weather_icon_size()
         self._apply_weather_stylesheet()
         self._update_weather_display()
         self._update_overlay_positions()
+
+    def _calculate_weather_icon_size(self):
+        point_size = max(1.0, float(self.weather_font_size))
+        try:
+            dpi_x = float(self.logicalDpiX())
+            dpi_y = float(self.logicalDpiY())
+            dpi = max(dpi_x, dpi_y)
+        except Exception:
+            dpi = 96.0
+        if dpi <= 0:
+            dpi = 96.0
+        pixels_per_point = dpi / 72.0
+        return max(8.0, point_size * 2.0 * pixels_per_point)
+
+    def _update_weather_icon_size(self):
+        calculated_size = self._calculate_weather_icon_size()
+        if math.isclose(self._weather_icon_size, calculated_size):
+            return
+        self._weather_icon_size = calculated_size
+
+        if self._weather_icon_key:
+            cached = self._icon_cache.get(self._weather_icon_key)
+            if isinstance(cached, QPixmap) and not cached.isNull():
+                self._apply_weather_icon(cached)
+                return
+
+        if not self._weather_icon_pixmap.isNull():
+            self._apply_weather_icon(self._weather_icon_pixmap)
+        else:
+            target = int(self._weather_icon_size)
+            self.weather_icon_label.setFixedSize(target, target)
 
     def _update_overlay_positions(self):
         self._update_weather_position()
