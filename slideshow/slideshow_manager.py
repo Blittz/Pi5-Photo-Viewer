@@ -333,9 +333,9 @@ class SlideshowManager(QWidget):
             return ""
 
         if formatted_temp and formatted_feels_like:
-            return f"Temperature: {formatted_temp} (Feels like {formatted_feels_like})"
+            return f"{formatted_temp} (Feels like {formatted_feels_like})"
         if formatted_temp:
-            return f"Temperature: {formatted_temp}"
+            return formatted_temp
         return f"Feels like: {formatted_feels_like}"
 
     @staticmethod
