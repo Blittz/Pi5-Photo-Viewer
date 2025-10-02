@@ -5,6 +5,7 @@ import os
 import html
 from datetime import datetime, date
 from dataclasses import asdict, is_dataclass
+from pathlib import Path
 
 from PyQt6.QtCore import (
     Qt,
@@ -15,7 +16,14 @@ from PyQt6.QtCore import (
     QPointF,
     QUrl,
 )
-from PyQt6.QtGui import QPixmap, QTransform, QPainter, QFont, QFontMetrics
+from PyQt6.QtGui import (
+    QPixmap,
+    QTransform,
+    QPainter,
+    QFont,
+    QFontMetrics,
+    QFontDatabase,
+)
 from PyQt6.QtWidgets import (
     QGraphicsView,
     QGraphicsScene,
@@ -47,6 +55,8 @@ EXIF_TAG_NAME_TO_ID = {name: tag for tag, name in ExifTags.TAGS.items()}
 
 
 class ImageViewer(QGraphicsView):
+    _emoji_font_family = None
+
     def __init__(
         self,
         motion_enabled=True,
@@ -978,6 +988,8 @@ class ImageViewer(QGraphicsView):
         self._update_overlay_positions()
 
     def _apply_weather_stylesheet(self):
+        emoji_font_family = self._ensure_weather_icon_font()
+
         self.weather_container.setStyleSheet(
             "background-color: rgba(0, 0, 0, 180); border-radius: 12px;"
         )
@@ -993,8 +1005,35 @@ class ImageViewer(QGraphicsView):
         )
         self.weather_icon_label.setStyleSheet(
             "background: transparent; "
-            "font-family: \"Noto Color Emoji\", sans-serif;"
+            f"font-family: \"{emoji_font_family}\", sans-serif;"
         )
+        self.weather_icon_label.setFont(QFont(emoji_font_family))
+
+    @classmethod
+    def _ensure_weather_icon_font(cls):
+        if cls._emoji_font_family:
+            return cls._emoji_font_family
+
+        emoji_font_paths = (
+            Path("/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"),
+            Path("/usr/share/fonts/opentype/noto/NotoColorEmoji.ttf"),
+        )
+
+        for path in emoji_font_paths:
+            if not path.exists():
+                continue
+            font_id = QFontDatabase.addApplicationFont(str(path))
+            if font_id == -1:
+                continue
+            families = QFontDatabase.applicationFontFamilies(font_id)
+            if families:
+                cls._emoji_font_family = families[0]
+                break
+
+        if not cls._emoji_font_family:
+            cls._emoji_font_family = "Noto Color Emoji"
+
+        return cls._emoji_font_family
 
     def _update_weather_position(self):
         if not self.weather_container.isVisible():
