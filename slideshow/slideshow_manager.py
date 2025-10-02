@@ -342,7 +342,7 @@ class SlideshowManager(QWidget):
     def _format_humidity_line(payload):
         humidity = payload.get("humidity")
         if isinstance(humidity, (int, float)):
-            return f"Humidity: {humidity:.0f}%"
+            return f"💧 {humidity:.0f}%"
         return ""
 
     def _format_wind_line(self, payload):
@@ -361,10 +361,10 @@ class SlideshowManager(QWidget):
             return ""
 
         if formatted_speed and formatted_direction:
-            return f"Wind: {formatted_speed} ({formatted_direction})"
+            return f"🌬️ {formatted_speed} ({formatted_direction})"
         if formatted_speed:
-            return f"Wind: {formatted_speed}"
-        return f"Wind: {formatted_direction}"
+            return f"🌬️ {formatted_speed}"
+        return f"🌬️ {formatted_direction}"
 
     def _format_wind_speed(self, value):
         unit = self._weather_units.lower()
@@ -418,10 +418,10 @@ class SlideshowManager(QWidget):
             return ""
 
         if sunrise_text and sunset_text:
-            return f"Sunrise: {sunrise_text}  Sunset: {sunset_text}"
+            return f"🌅 {sunrise_text}  🌇 {sunset_text}"
         if sunrise_text:
-            return f"Sunrise: {sunrise_text}"
-        return f"Sunset: {sunset_text}"
+            return f"🌅 {sunrise_text}"
+        return f"🌇 {sunset_text}"
 
     def _format_solar_time(self, timestamp_value, timezone_offset):
         if timezone_offset is None:
