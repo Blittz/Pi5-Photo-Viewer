@@ -1,13 +1,13 @@
 import sys
 from pathlib import Path
 
-from PyQt6.QtGui import QFont, QFontDatabase
+from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import QApplication
 
 from ui.main_window import MainWindow
 
 
-def _ensure_emoji_font(app: QApplication) -> None:
+def _ensure_emoji_font() -> None:
     """Load the Noto Color Emoji font if it is available on the system."""
 
     emoji_font_paths = (
@@ -15,27 +15,17 @@ def _ensure_emoji_font(app: QApplication) -> None:
         Path("/usr/share/fonts/opentype/noto/NotoColorEmoji.ttf"),
     )
 
-    font_loaded = False
     for path in emoji_font_paths:
-        if path.exists():
-            font_id = QFontDatabase.addApplicationFont(str(path))
-            font_loaded = font_id != -1
-        if font_loaded:
+        if not path.exists():
+            continue
+        font_id = QFontDatabase.addApplicationFont(str(path))
+        if font_id != -1:
             break
-
-    if font_loaded:
-        base_font = QFont(app.font())
-        families = ["Noto Color Emoji"]
-        default_family = base_font.defaultFamily()
-        if default_family and default_family not in families:
-            families.append(default_family)
-        base_font.setFamilies(families)
-        app.setFont(base_font)
 
 
 def main():
     app = QApplication(sys.argv)
-    _ensure_emoji_font(app)
+    _ensure_emoji_font()
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

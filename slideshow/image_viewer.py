@@ -983,17 +983,18 @@ class ImageViewer(QGraphicsView):
         )
         header_style = (
             "background-color: transparent; "
-            f"color: white; font-size: {self.weather_font_size:.1f}pt; "
-            "font-family: \"Noto Color Emoji\", \"Noto Sans\", \"DejaVu Sans\", sans-serif;"
+            f"color: white; font-size: {self.weather_font_size:.1f}pt;"
         )
         self.weather_location_label.setStyleSheet(header_style + " font-weight: 600;")
         self.weather_condition_label.setStyleSheet(header_style)
         self.weather_text_label.setStyleSheet(
             "background-color: transparent; "
-            f"color: white; font-size: {self.weather_font_size:.1f}pt; "
-            "font-family: \"Noto Color Emoji\", \"Noto Sans\", \"DejaVu Sans\", sans-serif;"
+            f"color: white; font-size: {self.weather_font_size:.1f}pt;"
         )
-        self.weather_icon_label.setStyleSheet("background: transparent;")
+        self.weather_icon_label.setStyleSheet(
+            "background: transparent; "
+            "font-family: \"Noto Color Emoji\", sans-serif;"
+        )
 
     def _update_weather_position(self):
         if not self.weather_container.isVisible():
