@@ -997,11 +997,28 @@ class ImageViewer(QGraphicsView):
             "background-color: transparent; "
             f"color: white; font-size: {self.weather_font_size:.1f}pt;"
         )
-        self.weather_location_label.setStyleSheet(header_style + " font-weight: 600;")
-        self.weather_condition_label.setStyleSheet(header_style)
+
+        def compose_font_family_css(base_family):
+            return (
+                f" font-family: \"{base_family}\", \"{emoji_font_family}\", sans-serif;"
+            )
+
+        location_font_css = compose_font_family_css(
+            self.weather_location_label.font().family()
+        )
+        condition_font_css = compose_font_family_css(
+            self.weather_condition_label.font().family()
+        )
+        text_font_css = compose_font_family_css(self.weather_text_label.font().family())
+
+        self.weather_location_label.setStyleSheet(
+            header_style + location_font_css + " font-weight: 600;"
+        )
+        self.weather_condition_label.setStyleSheet(header_style + condition_font_css)
         self.weather_text_label.setStyleSheet(
             "background-color: transparent; "
             f"color: white; font-size: {self.weather_font_size:.1f}pt;"
+            + text_font_css
         )
         self.weather_icon_label.setStyleSheet(
             "background: transparent; "
