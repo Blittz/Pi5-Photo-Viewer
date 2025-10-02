@@ -999,9 +999,9 @@ class ImageViewer(QGraphicsView):
         )
 
         def compose_font_family_css(base_family):
-            return (
-                f" font-family: \"{base_family}\", \"{emoji_font_family}\", sans-serif;"
-            )
+            if base_family:
+                return f" font-family: \"{base_family}\", sans-serif;"
+            return " font-family: sans-serif;"
 
         location_font_css = compose_font_family_css(
             self.weather_location_label.font().family()
