@@ -56,6 +56,25 @@ EXIF_TAG_NAME_TO_ID = {name: tag for tag, name in ExifTags.TAGS.items()}
 
 class ImageViewer(QGraphicsView):
     _emoji_font_family = None
+    _WEATHER_EMOJI_SEQUENCES = (
+        "🌬️",
+        "🌬",
+        "🌅",
+        "🌇",
+        "💧",
+        "☀️",
+        "☀",
+        "☁️",
+        "☁",
+        "❄️",
+        "❄",
+        "⛈️",
+        "⛈",
+        "🌧️",
+        "🌧",
+        "🌨️",
+        "🌨",
+    )
 
     def __init__(
         self,
@@ -191,6 +210,7 @@ class ImageViewer(QGraphicsView):
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
         self.weather_text_label.setWordWrap(True)
+        self.weather_text_label.setTextFormat(Qt.TextFormat.RichText)
         self.weather_text_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents
         )
@@ -965,6 +985,7 @@ class ImageViewer(QGraphicsView):
             location_display = location_text
 
         body_text = "\n".join(body_lines)
+        body_html = self._render_weather_body_html(body_text)
 
         self.weather_location_label.setText(location_display)
         self.weather_location_label.setVisible(bool(location_display))
@@ -972,7 +993,10 @@ class ImageViewer(QGraphicsView):
         self.weather_condition_label.setText(condition_text)
         self.weather_condition_label.setVisible(bool(condition_text))
 
-        self.weather_text_label.setText(body_text)
+        if body_html:
+            self.weather_text_label.setText(body_html)
+        else:
+            self.weather_text_label.clear()
         self.weather_text_label.setVisible(bool(body_text))
 
         should_show = (
@@ -1025,6 +1049,25 @@ class ImageViewer(QGraphicsView):
             f"font-family: \"{emoji_font_family}\", sans-serif;"
         )
         self.weather_icon_label.setFont(QFont(emoji_font_family))
+
+    def _render_weather_body_html(self, body_text):
+        if not body_text:
+            return ""
+
+        emoji_font_family = self._ensure_weather_icon_font()
+        escaped = html.escape(body_text)
+        for sequence in sorted(self._WEATHER_EMOJI_SEQUENCES, key=len, reverse=True):
+            if not sequence:
+                continue
+            escaped_sequence = html.escape(sequence)
+            if escaped_sequence not in escaped:
+                continue
+            replacement = (
+                f"<span style=\"font-family: '{emoji_font_family}', sans-serif;\">"
+                f"{escaped_sequence}</span>"
+            )
+            escaped = escaped.replace(escaped_sequence, replacement)
+        return escaped.replace("\n", "<br/>")
 
     @classmethod
     def _ensure_weather_icon_font(cls):

@@ -3,16 +3,19 @@
         "/home/blittz/jarvis/photos/Google Photos/Ellie Sak Graduation 2025",
         "/home/blittz/jarvis/photos/Google Photos/2011-07-18 Family Reunion",
         "/home/blittz/jarvis/photos/Google Photos/Christmas 2010",
-        "/home/blittz/jarvis/photos/Google Photos/LA 2008",
-        "/home/blittz/jarvis/photos/Google Photos/LA 2009",
-        "/home/blittz/jarvis/photos/Google Photos/Misc Family"
+        "/home/blittz/jarvis/photos/Google Photos/Misc Family",
+        "/home/blittz/jarvis/photos/Christmas and other Family Pix",
+        "/home/blittz/jarvis/photos/Google Photos/18 days in Kennewick and Richland",
+        "/home/blittz/jarvis/photos/Google Photos/Memories together",
+        "/home/blittz/jarvis/photos/Google Photos/Randy, Marilyn",
+        "/home/blittz/jarvis/photos/Google Photos/Sarah Palin 2009"
     ],
     "shuffle": true,
     "motion": true,
     "duration": 10,
     "overlay_folder_font_size": 48,
     "overlay_date_font_size": 31,
-    "overlay_weather_font_size": 16,
+    "overlay_weather_font_size": 28,
     "overlay_title_font_size": 48,
     "transitions": [
         "crossfade",
