@@ -171,7 +171,7 @@ class ImageViewer(QGraphicsView):
         self.weather_location_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
-        self.weather_location_label.setWordWrap(True)
+        self.weather_location_label.setWordWrap(False)
         self.weather_location_label.setVisible(False)
         self.weather_location_label.setTextFormat(Qt.TextFormat.RichText)
         self.weather_location_label.setAttribute(
@@ -211,7 +211,7 @@ class ImageViewer(QGraphicsView):
         self.weather_condition_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
-        self.weather_condition_label.setWordWrap(True)
+        self.weather_condition_label.setWordWrap(False)
         self.weather_condition_label.setVisible(False)
         self.weather_condition_label.setTextFormat(Qt.TextFormat.RichText)
         self.weather_condition_label.setAttribute(
@@ -223,7 +223,7 @@ class ImageViewer(QGraphicsView):
         self.weather_feels_like_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
-        self.weather_feels_like_label.setWordWrap(True)
+        self.weather_feels_like_label.setWordWrap(False)
         self.weather_feels_like_label.setVisible(False)
         self.weather_feels_like_label.setTextFormat(Qt.TextFormat.RichText)
         self.weather_feels_like_label.setAttribute(
@@ -235,7 +235,7 @@ class ImageViewer(QGraphicsView):
         self.weather_humidity_wind_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
-        self.weather_humidity_wind_label.setWordWrap(True)
+        self.weather_humidity_wind_label.setWordWrap(False)
         self.weather_humidity_wind_label.setVisible(False)
         self.weather_humidity_wind_label.setTextFormat(Qt.TextFormat.RichText)
         self.weather_humidity_wind_label.setAttribute(
@@ -247,7 +247,7 @@ class ImageViewer(QGraphicsView):
         self.weather_sun_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
-        self.weather_sun_label.setWordWrap(True)
+        self.weather_sun_label.setWordWrap(False)
         self.weather_sun_label.setVisible(False)
         self.weather_sun_label.setTextFormat(Qt.TextFormat.RichText)
         self.weather_sun_label.setAttribute(
@@ -259,7 +259,7 @@ class ImageViewer(QGraphicsView):
         self.weather_updated_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
-        self.weather_updated_label.setWordWrap(True)
+        self.weather_updated_label.setWordWrap(False)
         self.weather_updated_label.setVisible(False)
         self.weather_updated_label.setTextFormat(Qt.TextFormat.RichText)
         self.weather_updated_label.setAttribute(

@@ -345,7 +345,7 @@ class SlideshowManager(QWidget):
         if isinstance(condition, str):
             text = condition.strip()
             if text:
-                return text
+                return text.title()
         return ""
 
     @staticmethod
