@@ -263,32 +263,43 @@ class SlideshowManager(QWidget):
         if not isinstance(payload, dict):
             return str(payload)
 
-        lines = []
+        lines = [""] * 7
 
         location_line = self._format_location_line(payload)
         if location_line:
-            lines.append(location_line)
+            lines[0] = location_line
 
         temperature_line = self._format_temperature_line(payload)
         if temperature_line:
-            lines.append(temperature_line)
+            lines[1] = temperature_line
+
+        summary_line = self._format_condition_line(payload)
+        if summary_line:
+            lines[2] = summary_line
+
+        feels_like_line = self._format_feels_like_line(payload)
+        if feels_like_line:
+            lines[3] = feels_like_line
 
         humidity_line = self._format_humidity_line(payload)
         wind_line = self._format_wind_line(payload)
 
         if humidity_line and wind_line:
-            lines.append(f"{humidity_line}   {wind_line}")
-        elif humidity_line:
-            lines.append(humidity_line)
-        elif wind_line:
-            lines.append(wind_line)
+            lines[4] = f"{humidity_line}   {wind_line}"
+        elif humidity_line or wind_line:
+            lines[4] = humidity_line or wind_line
 
         sun_line = self._format_solar_line(payload)
         if sun_line:
-            lines.append(sun_line)
+            lines[5] = sun_line
 
-        lines.append(f"Updated {self._format_time(timestamp)}")
-        return "\n".join(line for line in lines if line)
+        lines[6] = f"Updated {self._format_time(timestamp)}"
+
+        # Remove trailing empty lines while preserving positional blanks in between entries.
+        while lines and lines[-1] == "":
+            lines.pop()
+
+        return "\n".join(lines)
 
     def _format_stale_weather_text(self, error_message, timestamp):
         if error_message:
@@ -316,27 +327,26 @@ class SlideshowManager(QWidget):
 
     def _format_temperature_line(self, payload):
         temperature = payload.get("temperature")
+        if isinstance(temperature, (int, float)):
+            return self._format_temperature(float(temperature))
+        return ""
+
+    def _format_feels_like_line(self, payload):
         feels_like = payload.get("feels_like")
+        if isinstance(feels_like, (int, float)):
+            formatted = self._format_temperature(float(feels_like))
+            if formatted:
+                return f"Feels like {formatted}"
+        return ""
 
-        formatted_temp = (
-            self._format_temperature(float(temperature))
-            if isinstance(temperature, (int, float))
-            else ""
-        )
-        formatted_feels_like = (
-            self._format_temperature(float(feels_like))
-            if isinstance(feels_like, (int, float))
-            else ""
-        )
-
-        if not formatted_temp and not formatted_feels_like:
-            return ""
-
-        if formatted_temp and formatted_feels_like:
-            return f"{formatted_temp} (Feels like {formatted_feels_like})"
-        if formatted_temp:
-            return formatted_temp
-        return f"Feels like: {formatted_feels_like}"
+    @staticmethod
+    def _format_condition_line(payload):
+        condition = payload.get("condition")
+        if isinstance(condition, str):
+            text = condition.strip()
+            if text:
+                return text
+        return ""
 
     @staticmethod
     def _format_humidity_line(payload):
@@ -434,8 +444,6 @@ class SlideshowManager(QWidget):
         city = payload.get("city") or payload.get("name")
         region = payload.get("region")
         country = payload.get("country")
-        condition = payload.get("condition")
-
         parts = []
         if isinstance(city, str) and city.strip():
             parts.append(city.strip())
@@ -452,14 +460,7 @@ class SlideshowManager(QWidget):
         if not parts:
             return ""
 
-        location_text = ", ".join(parts)
-
-        if isinstance(condition, str):
-            condition_text = condition.strip()
-            if condition_text:
-                return f"{location_text} – {condition_text}"
-
-        return location_text
+        return ", ".join(parts)
 
     @staticmethod
     def _format_time(timestamp):
