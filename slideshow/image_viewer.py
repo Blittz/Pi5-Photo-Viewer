@@ -288,6 +288,17 @@ class ImageViewer(QGraphicsView):
         )
         self.clock_layout.addWidget(self.clock_label)
 
+        self.clock_day_label = QLabel(self.clock_container)
+        self.clock_day_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop
+        )
+        self.clock_day_label.setWordWrap(False)
+        self.clock_day_label.setVisible(True)
+        self.clock_day_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents
+        )
+        self.clock_layout.addWidget(self.clock_day_label)
+
         self.clock_date_label = QLabel(self.clock_container)
         self.clock_date_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop
@@ -1119,6 +1130,11 @@ class ImageViewer(QGraphicsView):
             "background-color: transparent; "
             f"color: white; font-size: {self.weather_font_size:.1f}pt;"
         )
+        day_style = (
+            "background-color: transparent; "
+            f"color: white; font-size: {self.weather_font_size * 2.0:.1f}pt;"
+            " font-weight: 600;"
+        )
         emphasized_style = base_style + " font-weight: 600;"
         temperature_style = (
             "background-color: transparent; "
@@ -1155,6 +1171,9 @@ class ImageViewer(QGraphicsView):
             self.weather_updated_label.font().family()
         )
         clock_time_font_css = compose_font_family_css(self.clock_label.font().family())
+        clock_day_font_css = compose_font_family_css(
+            self.clock_day_label.font().family()
+        )
         clock_date_font_css = compose_font_family_css(
             self.clock_date_label.font().family()
         )
@@ -1179,6 +1198,7 @@ class ImageViewer(QGraphicsView):
         self.weather_icon_label.setFont(QFont(emoji_font_family))
 
         self.clock_label.setStyleSheet(temperature_style + clock_time_font_css)
+        self.clock_day_label.setStyleSheet(day_style + clock_day_font_css)
         self.clock_date_label.setStyleSheet(base_style + clock_date_font_css)
         self.clock_sun_label.setStyleSheet(base_style + clock_sun_font_css)
 
@@ -1280,6 +1300,7 @@ class ImageViewer(QGraphicsView):
 
         for label in (
             self.clock_label,
+            self.clock_day_label,
             self.clock_date_label,
             self.clock_sun_label,
         ):
@@ -1297,6 +1318,14 @@ class ImageViewer(QGraphicsView):
         y = self.overlay_margin
         self.clock_container.move(int(x), int(y))
 
+    @staticmethod
+    def _format_day_with_suffix(day_value: int) -> str:
+        if 10 <= day_value % 100 <= 20:
+            suffix = "th"
+        else:
+            suffix = {1: "st", 2: "nd", 3: "rd"}.get(day_value % 10, "th")
+        return f"{day_value}{suffix}"
+
     def _update_clock_display(self):
         now = datetime.now()
         time_text = now.strftime("%I:%M %p").lstrip("0")
@@ -1306,7 +1335,12 @@ class ImageViewer(QGraphicsView):
         self.clock_label.setText(time_text)
         self.clock_label.setVisible(True)
 
-        date_text = now.strftime("%A - %m/%d/%Y")
+        day_text = now.strftime("%A")
+        self.clock_day_label.setText(day_text)
+        self.clock_day_label.setVisible(True)
+
+        ordinal_day = self._format_day_with_suffix(now.day)
+        date_text = f"{now.strftime('%B')} {ordinal_day}, {now.year}"
         self.clock_date_label.setText(date_text)
         self.clock_date_label.setVisible(True)
 
