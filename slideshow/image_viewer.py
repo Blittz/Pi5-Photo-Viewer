@@ -267,6 +267,50 @@ class ImageViewer(QGraphicsView):
         )
         self.weather_layout.addWidget(self.weather_updated_label)
 
+        self.clock_container = QWidget(self)
+        self.clock_container.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents
+        )
+        self.clock_container.setVisible(True)
+
+        self.clock_layout = QVBoxLayout(self.clock_container)
+        self.clock_layout.setContentsMargins(12, 10, 12, 10)
+        self.clock_layout.setSpacing(6)
+
+        self.clock_label = QLabel(self.clock_container)
+        self.clock_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop
+        )
+        self.clock_label.setWordWrap(False)
+        self.clock_label.setVisible(True)
+        self.clock_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents
+        )
+        self.clock_layout.addWidget(self.clock_label)
+
+        self.clock_date_label = QLabel(self.clock_container)
+        self.clock_date_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop
+        )
+        self.clock_date_label.setWordWrap(False)
+        self.clock_date_label.setVisible(True)
+        self.clock_date_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents
+        )
+        self.clock_layout.addWidget(self.clock_date_label)
+
+        self.clock_sun_label = QLabel(self.clock_container)
+        self.clock_sun_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop
+        )
+        self.clock_sun_label.setWordWrap(False)
+        self.clock_sun_label.setVisible(False)
+        self.clock_sun_label.setTextFormat(Qt.TextFormat.RichText)
+        self.clock_sun_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents
+        )
+        self.clock_layout.addWidget(self.clock_sun_label)
+
         self._apply_weather_stylesheet()
 
         self.overlay_margin = 20
@@ -280,9 +324,16 @@ class ImageViewer(QGraphicsView):
         self._icon_cache = {}
         self._pending_icon_reply = None
 
+        self._sunrise_sunset_text = ""
+
         self._update_weather_icon_size()
         self._pending_icon_key = None
         self._network_manager = QNetworkAccessManager(self)
+
+        self.clock_timer = QTimer(self)
+        self.clock_timer.timeout.connect(self._update_clock_display)
+        self.clock_timer.start(1000)
+        self._update_clock_display()
 
     def show_black_screen(self):
         self.motion_timer.stop()
@@ -298,10 +349,12 @@ class ImageViewer(QGraphicsView):
         self._photo_date_text = ""
         self._weather_text = ""
         self._weather_icon_key = None
+        self._sunrise_sunset_text = ""
         self._cancel_pending_icon_request()
         self._clear_weather_icon()
         self._update_metadata_label()
         self._update_weather_display()
+        self._update_clock_display()
 
         self.scene.setSceneRect(QRectF(self.viewport().rect()))
         self.viewport().update()
@@ -783,6 +836,7 @@ class ImageViewer(QGraphicsView):
     def _update_overlay_positions(self):
         self._update_weather_position()
         self._update_metadata_position()
+        self._update_clock_position()
 
     def _calculate_metadata_max_width(self):
         viewport_limit = max(0, self.viewport().width() - self.overlay_margin * 2)
@@ -1010,6 +1064,8 @@ class ImageViewer(QGraphicsView):
         sun_text = raw_lines[5].strip()
         updated_text = raw_lines[6].strip()
 
+        self._sunrise_sunset_text = sun_text
+
         has_icon = not self._weather_icon_pixmap.isNull()
         if has_icon:
             self.weather_icon_label.setPixmap(self._weather_icon_pixmap)
@@ -1048,11 +1104,15 @@ class ImageViewer(QGraphicsView):
             self.weather_container.raise_()
 
         self._update_overlay_positions()
+        self._update_clock_display()
 
     def _apply_weather_stylesheet(self):
         emoji_font_family = self._ensure_weather_icon_font()
 
         self.weather_container.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 180); border-radius: 12px;"
+        )
+        self.clock_container.setStyleSheet(
             "background-color: rgba(0, 0, 0, 180); border-radius: 12px;"
         )
         base_style = (
@@ -1094,6 +1154,13 @@ class ImageViewer(QGraphicsView):
         updated_font_css = compose_font_family_css(
             self.weather_updated_label.font().family()
         )
+        clock_time_font_css = compose_font_family_css(self.clock_label.font().family())
+        clock_date_font_css = compose_font_family_css(
+            self.clock_date_label.font().family()
+        )
+        clock_sun_font_css = compose_font_family_css(
+            self.clock_sun_label.font().family()
+        )
 
         self.weather_location_label.setStyleSheet(emphasized_style + location_font_css)
         self.weather_temperature_label.setStyleSheet(
@@ -1110,6 +1177,10 @@ class ImageViewer(QGraphicsView):
             f"font-family: \"{emoji_font_family}\", sans-serif;"
         )
         self.weather_icon_label.setFont(QFont(emoji_font_family))
+
+        self.clock_label.setStyleSheet(temperature_style + clock_time_font_css)
+        self.clock_date_label.setStyleSheet(base_style + clock_date_font_css)
+        self.clock_sun_label.setStyleSheet(base_style + clock_sun_font_css)
 
     def _render_weather_body_html(self, body_text):
         if not body_text:
@@ -1192,6 +1263,64 @@ class ImageViewer(QGraphicsView):
         x = self.overlay_margin
         y = self.overlay_margin
         self.weather_container.move(int(x), int(y))
+
+    def _update_clock_position(self):
+        if not self.clock_container.isVisible():
+            return
+
+        max_width = max(0, self.viewport().width() - self.overlay_margin * 2)
+        if max_width <= 0:
+            self.clock_container.setVisible(False)
+            return
+
+        margins = self.clock_layout.contentsMargins()
+        content_width = max_width - margins.left() - margins.right()
+        if content_width < 0:
+            content_width = 0
+
+        for label in (
+            self.clock_label,
+            self.clock_date_label,
+            self.clock_sun_label,
+        ):
+            if label.isVisible():
+                label.setMaximumWidth(content_width or max_width)
+            else:
+                label.setMaximumWidth(0)
+
+        self.clock_container.setMaximumWidth(max_width)
+        self.clock_container.adjustSize()
+
+        x = self.viewport().width() - self.clock_container.width() - self.overlay_margin
+        if x < self.overlay_margin:
+            x = self.overlay_margin
+        y = self.overlay_margin
+        self.clock_container.move(int(x), int(y))
+
+    def _update_clock_display(self):
+        now = datetime.now()
+        time_text = now.strftime("%I:%M %p").lstrip("0")
+        if not time_text:
+            time_text = now.strftime("%H:%M")
+
+        self.clock_label.setText(time_text)
+        self.clock_label.setVisible(True)
+
+        date_text = now.strftime("%A - %m/%d/%Y")
+        self.clock_date_label.setText(date_text)
+        self.clock_date_label.setVisible(True)
+
+        sun_text = self._sunrise_sunset_text.strip()
+        if sun_text:
+            self.clock_sun_label.setText(self._render_weather_body_html(sun_text))
+            self.clock_sun_label.setVisible(True)
+        else:
+            self.clock_sun_label.clear()
+            self.clock_sun_label.setVisible(False)
+
+        self.clock_container.setVisible(True)
+        self.clock_container.raise_()
+        self._update_clock_position()
 
     def _normalize_weather_overlay(self, weather):
         if weather is None:
