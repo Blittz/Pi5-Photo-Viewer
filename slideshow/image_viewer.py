@@ -1097,7 +1097,8 @@ class ImageViewer(QGraphicsView):
         apply_html(self.weather_condition_label, summary_text)
         apply_html(self.weather_feels_like_label, feels_like_text)
         apply_html(self.weather_humidity_wind_label, humidity_wind_text)
-        apply_html(self.weather_sun_label, sun_text)
+        self.weather_sun_label.clear()
+        self.weather_sun_label.setVisible(False)
         apply_html(self.weather_updated_label, updated_text)
 
         should_show = (
@@ -1106,7 +1107,6 @@ class ImageViewer(QGraphicsView):
             or self.weather_condition_label.isVisible()
             or self.weather_feels_like_label.isVisible()
             or self.weather_humidity_wind_label.isVisible()
-            or self.weather_sun_label.isVisible()
             or self.weather_updated_label.isVisible()
             or has_icon
         )
