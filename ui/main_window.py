@@ -3,11 +3,13 @@ from PyQt6.QtWidgets import (
     QFileDialog, QHBoxLayout, QCheckBox, QSlider, QGridLayout, QLineEdit,
     QTimeEdit,
 )
-from PyQt6.QtCore import Qt, QTime
-from slideshow.slideshow_manager import SlideshowManager
+from PyQt6.QtCore import Qt, QTime, QTimer, QElapsedTimer, QEvent
+from PyQt6.QtGui import QImageReader
+from slideshow.slideshow_manager import SlideshowManager, get_all_images_from_folders
 from utils.file_loader import count_images_in_folder
 import os
 import json
+import math
 
 SETTINGS_PATH = "settings.json"
 
@@ -41,11 +43,64 @@ class MainWindow(QWidget):
         super().__init__()
         self.setWindowTitle("Pi Photo Viewer")
         self.folders = []
+        self._auto_start_offered = False
+        self.auto_start_timer = QTimer(self)
+        self.auto_start_timer.setInterval(100)
+        self.auto_start_timer.timeout.connect(self.update_auto_start)
+        self.auto_start_clock = QElapsedTimer()
         self.init_ui()
         self.load_settings()
+        # Connect after loading preferences so initialization never cancels startup.
+        for widget in self.findChildren(QWidget):
+            widget.installEventFilter(self)
+            if isinstance(widget, QCheckBox):
+                widget.toggled.connect(self.cancel_auto_start)
+            elif isinstance(widget, QSlider):
+                widget.valueChanged.connect(self.cancel_auto_start)
+            elif isinstance(widget, QLineEdit):
+                widget.textEdited.connect(self.cancel_auto_start)
+            elif isinstance(widget, QTimeEdit):
+                widget.timeChanged.connect(self.cancel_auto_start)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._auto_start_offered:
+            self._auto_start_offered = True
+            self.auto_start_clock.start()
+            self.auto_start_timer.start()
+            self.update_auto_start()
+
+    def update_auto_start(self):
+        if not self.auto_start_timer.isActive():
+            return
+        remaining = max(0, math.ceil((30000 - self.auto_start_clock.elapsed()) / 1000))
+        self.auto_start_label.setText(f"Slideshow starts automatically in {remaining} seconds.")
+        if remaining == 0:
+            self.start_slideshow()
+
+    def cancel_auto_start(self, *_):
+        if self.auto_start_timer.isActive():
+            self.auto_start_timer.stop()
+            self.auto_start_label.setText("Auto-start cancelled. Adjust settings or click Start Slideshow.")
+        self.cancel_auto_start_button.setEnabled(False)
+
+    def eventFilter(self, watched, event):
+        if event.type() in (
+            QEvent.Type.MouseButtonPress, QEvent.Type.KeyPress,
+            QEvent.Type.Wheel, QEvent.Type.TouchBegin,
+        ):
+            self.cancel_auto_start()
+        return super().eventFilter(watched, event)
 
     def init_ui(self):
         layout = QVBoxLayout(self)
+
+        self.auto_start_label = QLabel("Slideshow starts automatically in 30 seconds.")
+        self.auto_start_label.setWordWrap(True)
+        layout.addWidget(self.auto_start_label)
+        self.cancel_auto_start_button = QPushButton("Cancel auto-start")
+        self.cancel_auto_start_button.clicked.connect(self.cancel_auto_start)
+        layout.addWidget(self.cancel_auto_start_button)
 
         # Folder list
         self.folder_list = QListWidget()
@@ -262,8 +317,23 @@ class MainWindow(QWidget):
             self.folder_list.addItem(f"{path} ({image_count} photos)")
 
     def start_slideshow(self):
+        self.cancel_auto_start()
         if not self.folders:
+            self.auto_start_label.setText("No photo folders are selected. Choose a folder, then click Start Slideshow.")
             return
+        unavailable = [folder for folder in self.folders if not os.path.isdir(folder) or not os.access(folder, os.R_OK | os.X_OK)]
+        if unavailable:
+            self.auto_start_label.setText("Photo folder unavailable: " + ", ".join(unavailable) + ". Reconnect it or choose another folder.")
+            return
+        # Decode only until a usable photo is found. Checking every file up front
+        # can delay opening large collections; the slideshow skips bad files later.
+        images = get_all_images_from_folders(self.folders)
+        first_usable = next((index for index, path in enumerate(images)
+                             if not QImageReader(path).read().isNull()), None)
+        if first_usable is None:
+            self.auto_start_label.setText("No usable photos were found in the selected folders. Choose a folder with readable images.")
+            return
+        images = images[first_usable:]
         shuffle = self.shuffle_checkbox.isChecked()
         duration = self.duration_slider.value()
         motion_enabled = self.motion_checkbox.isChecked()
@@ -303,7 +373,9 @@ class MainWindow(QWidget):
             weather_api_key=weather_api_key,
             weather_location=weather_location,
             weather_units=weather_units,
+            image_paths=images,
         )
+        self.auto_start_label.setText("Slideshow started. Auto-start will not run again this launch.")
         self.slideshow.showFullScreen()
 
     def load_settings(self):
@@ -454,6 +526,7 @@ class MainWindow(QWidget):
         save_json_settings(data)
 
     def closeEvent(self, event):
+        self.cancel_auto_start()
         self.save_settings()
         super().closeEvent(event)
 

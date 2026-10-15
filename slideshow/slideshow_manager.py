@@ -3,6 +3,7 @@ import random
 from datetime import datetime, time as time_cls
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
+from PyQt6.QtGui import QImageReader
 from .image_viewer import ImageViewer, SUPPORTED_TRANSITIONS
 from utils.weather_client import WeatherClient
 
@@ -44,6 +45,7 @@ class SlideshowManager(QWidget):
         weather_api_key="",
         weather_location="",
         weather_units="metric",
+        image_paths=None,
     ):
         super().__init__()
 
@@ -105,7 +107,12 @@ class SlideshowManager(QWidget):
         self.night_timer = QTimer(self)
         self.night_timer.timeout.connect(self.evaluate_night_mode)
 
-        self.load_images()
+        if image_paths is None:
+            self.load_images()
+        else:
+            self.images = list(image_paths)
+            if self.shuffle:
+                random.shuffle(self.images)
         self.start_slideshow()
 
         self.slideshow_timer.start(self.duration * 1000)
@@ -150,6 +157,15 @@ class SlideshowManager(QWidget):
 
     def show_image(self, index):
         if not self.images or self.blackout_active:
+            return
+        # Files can be corrupt or disappear after the startup validation.
+        # Skip them without presenting an empty image or looping forever.
+        index %= len(self.images)
+        while self.images and QImageReader(self.images[index]).read().isNull():
+            self.images.pop(index)
+            if self.images:
+                index %= len(self.images)
+        if not self.images:
             return
         previous_path = self.current_image_path
         self.current_index = index % len(self.images)

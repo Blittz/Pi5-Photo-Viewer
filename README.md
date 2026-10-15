@@ -13,6 +13,9 @@
   <h2>✨ Features</h2>
   <ul>
     <li>Fullscreen slideshow with shuffle and adjustable duration</li>
+    <li>Visible 30-second startup countdown using saved settings; cancel it with
+      “Cancel auto-start” or by interacting with settings. “Start Slideshow” starts
+      immediately. The countdown runs once per application launch.</li>
     <li>Ken Burns-style motion effects for every image</li>
     <li>Folder ordering with automatic image counts</li>
     <li>Settings stored in <code>settings.json</code> for persistence</li>
@@ -35,6 +38,12 @@
 
 <section>
   <h2>⚙️ Configuration</h2>
+  <p>
+    If a selected photo folder is unavailable or no readable images are found,
+    the settings window stays open with a message. Reconnect the folder or choose
+    another, then click “Start Slideshow”. Returning from a slideshow does not
+    restart the countdown.
+  </p>
   <p>
     All preferences are saved to <code>settings.json</code> by the GUI.
     To enable the optional weather overlay, provide the keys below:
