@@ -86,6 +86,7 @@ class NightDisplay(QuietSidebar):
             self.tile_headers.append(header)
             self.tile_layouts.append(cell)
         self.layout.addLayout(self.tiles)
+        self.layout.addWidget(self.event_panel)
         self.layout.addStretch(1)
         self.layout.addWidget(self.dividers[1])
         self.footer = QVBoxLayout()
@@ -131,6 +132,8 @@ class NightDisplay(QuietSidebar):
             icon.background = NIGHT_BACKGROUND
             icon.update()
         self.health_notice.set_health(self.health_notice.issues, self.brightness)
+        if self.event_panel.view:
+            self.event_panel.set_view(self.event_panel.view,self.primary,self.secondary,self.brightness)
         for divider in self.dividers:
             divider.setStyleSheet(f'background:{dim("#484039")};')
 
@@ -147,8 +150,9 @@ class NightDisplay(QuietSidebar):
         self.scale = scale
         margin = round(96 * scale)
         gap = round(72 * scale)
-        self.layout.setContentsMargins(margin, round(72 * scale), margin, round(48 * scale))
-        self.layout.setSpacing(round(30 * scale))
+        compact=bool(self.event_panel.view)
+        self.layout.setContentsMargins(margin, round((52 if compact else 72) * scale), margin, round((32 if compact else 48) * scale))
+        self.layout.setSpacing(round((20 if compact else 30) * scale))
         self.upper.setSpacing(gap)
         self.clock_layout.setSpacing(round(14 * scale))
         self.weather_layout.setSpacing(round(22 * scale))
@@ -198,6 +202,7 @@ class NightDisplay(QuietSidebar):
         font(self.source_label, 21)
         font(self.status_label, 21)
         self.health_notice.set_metrics(21*scale, width - 2*margin)
+        self.event_panel.set_metrics(scale, width - 2*margin, night=True)
         for label, available in [(self.date_label, panel_width), (self.condition_label, panel_width),
                                  (self.feels_label, panel_width), (self.status_label, width - 2 * margin),
                                  (self.humidity_label, tile_width), (self.wind_label, tile_width)]:

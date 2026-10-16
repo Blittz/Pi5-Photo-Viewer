@@ -1,13 +1,14 @@
 """Static, click-through window edge and compact information-area warning."""
 from PyQt6.QtCore import Qt, QRect, QRectF, QPointF
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PyQt6.QtWidgets import QWidget, QLabel, QHBoxLayout, QSizePolicy
 
 DAY_RED = '#ba5b57'
+EVENT_BLUE = '#5c8fbc'
 
 
-def warning_color(brightness=None):
-    color = QColor(DAY_RED)
+def _edge_color(value, brightness=None):
+    color = QColor(value)
     if brightness is None:
         return color
     background = QColor('#070809')
@@ -16,43 +17,71 @@ def warning_color(brightness=None):
                     for i in range(3)])
 
 
+def warning_color(brightness=None):
+    return _edge_color(DAY_RED, brightness)
+
+
+def event_color(brightness=None):
+    return _edge_color(EVENT_BLUE, brightness)
+
+
 class HealthEdge(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         self.issues = ()
         self.brightness = None
+        self.mode = None
+        self._border_cache = None
+        self._border_key = None
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.hide()
 
-    def set_health(self, issues, brightness=None):
+    def set_health(self, issues, brightness=None, imminent=False):
         self.issues, self.brightness = tuple(issues), brightness
-        self.setVisible(bool(self.issues))
+        self.mode = "health" if self.issues else "event" if imminent else None
+        self.setVisible(self.mode is not None)
         self.raise_()
         self.update()
 
+    def fade_width(self):
+        return max(1, round(min(self.width(), self.height()) * .05))
+
     def paintEvent(self, event):
-        if not self.issues:
+        if self.mode is None:
             return
-        p = QPainter(self)
-        color = warning_color(self.brightness)
-        fade = min(16, self.width() / 4, self.height() / 4)
-        # Four gradients point inward; the entire centre stays transparent.
-        for rect, start, end in [
-            (QRectF(0, 0, self.width(), fade), QPointF(0, 0), QPointF(0, fade)),
-            (QRectF(0, self.height()-fade, self.width(), fade), QPointF(0, self.height()), QPointF(0, self.height()-fade)),
-            (QRectF(0, 0, fade, self.height()), QPointF(0, 0), QPointF(fade, 0)),
-            (QRectF(self.width()-fade, 0, fade, self.height()), QPointF(self.width(), 0), QPointF(self.width()-fade, 0)),
-        ]:
-            gradient = QLinearGradient(start, end)
-            outer = QColor(color); outer.setAlpha(75)
-            inner = QColor(color); inner.setAlpha(0)
-            gradient.setColorAt(0, outer); gradient.setColorAt(1, inner)
-            p.fillRect(rect, gradient)
-        p.setPen(QPen(color, 2))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawRect(QRectF(1, 1, max(0, self.width()-2), max(0, self.height()-2)))
+        color = warning_color(self.brightness) if self.mode == "health" else event_color(self.brightness)
+        key = (self.width(), self.height(), color.rgba(), self.devicePixelRatioF())
+        if key != self._border_key:
+            ratio = self.devicePixelRatioF()
+            pixmap = QPixmap(round(self.width()*ratio), round(self.height()*ratio))
+            pixmap.setDevicePixelRatio(ratio)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            fade = self.fade_width()
+            # Nested rounded contours produce a smooth, non-additive fade at
+            # corners too. Cache the static result; photo motion cannot animate it.
+            for depth in range(fade-1, -1, -1):
+                ink = QColor(color)
+                ink.setAlpha(round(145 * (1-depth/fade)**2))
+                outer = QPainterPath(); inner = QPainterPath()
+                radius = max(0, fade*.6-depth)
+                outer.addRoundedRect(QRectF(depth,depth,max(0,self.width()-2*depth),
+                                           max(0,self.height()-2*depth)),radius,radius)
+                inset = depth+1
+                inner.addRoundedRect(QRectF(inset,inset,max(0,self.width()-2*inset),
+                                           max(0,self.height()-2*inset)),max(0,radius-1),max(0,radius-1))
+                painter.fillPath(outer.subtracted(inner), ink)
+            painter.setPen(QPen(color, 2))
+            painter.drawRoundedRect(QRectF(1,1,max(0,self.width()-2),max(0,self.height()-2)),
+                                    fade*.6, fade*.6)
+            painter.end()
+            self._border_cache, self._border_key = pixmap, key
+        painter = QPainter(self)
+        painter.drawPixmap(0, 0, self._border_cache)
 
 
 class WarningIcon(QWidget):

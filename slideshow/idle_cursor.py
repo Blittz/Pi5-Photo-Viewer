@@ -2,6 +2,7 @@
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QEvent, QTimer, Qt
 from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtGui import QCursor
 
 
 class IdleCursor(QObject):
@@ -14,6 +15,7 @@ class IdleCursor(QObject):
         super().__init__(window)
         self.window = window
         self.hidden = False
+        self._last_mouse_position = QCursor.pos()
         self._saved = {}
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
@@ -55,6 +57,7 @@ class IdleCursor(QObject):
     def _hide_cursor(self):
         if sip.isdeleted(self.window) or not self.window.isVisible():
             return
+        self._last_mouse_position = QCursor.pos()
         # Save every cursor before changing any inherited cursor.
         widgets = self._widgets()
         self._saved = {w: (w.testAttribute(Qt.WidgetAttribute.WA_SetCursor), w.cursor()) for w in widgets}
@@ -95,6 +98,11 @@ class IdleCursor(QObject):
                 elif kind in (QEvent.Type.Hide, QEvent.Type.Close):
                     self.stop()
                     self._remove_app_filter()
+            if kind == QEvent.Type.MouseMove:
+                position = event.globalPosition().toPoint()
+                if position == self._last_mouse_position:
+                    return False  # Layout/overlay changes can synthesize a stationary move.
+                self._last_mouse_position = position
             if kind in (QEvent.Type.MouseMove,
                         QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease,
                         QEvent.Type.Wheel, QEvent.Type.KeyPress, QEvent.Type.TouchBegin):

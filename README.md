@@ -101,6 +101,55 @@
     are logged, without credentials, paths, or message contents.
   </p>
   <p>
+    “Next session” shows the earliest eligible upcoming Discord Scheduled Event
+    from the bot's existing servers, with its source server, Pacific weekday/date,
+    time and countdown. All eligible titles are included without a D&amp;D keyword
+    filter. The existing service exports a private atomic local file at
+    <code>~/.local/state/discord-photo-viewer/events.json</code>; an optional
+    <code>SCHEDULED_EVENTS_FILE</code> environment variable must use the same
+    absolute path in both applications. No credentials or direct Discord access
+    are needed in the viewer. File reads run in bounded worker processes every
+    30 seconds; countdowns and border selection update every five seconds.
+  </p>
+  <p>
+    A steady dimmable blue window edge appears only for a freshly confirmed
+    scheduled event starting in the next 24 hours. Existing red health warnings
+    take priority while event details remain visible. Blue returns after health
+    recovery if the event still qualifies, and ends when the start time is reached.
+    Canceled/completed/deleted events disappear on refresh; rescheduling changes
+    ordering. An unstarted past event is labeled “Starting now” for at most five
+    minutes. If no future event exists, active sessions may be shown; without an
+    end time they expire four hours after the listed start. Recurring events use
+    the next start supplied by Discord; future occurrences are not invented.
+  </p>
+  <p>
+    A successful empty feed shows “No upcoming events.” Missing/invalid data shows
+    unavailable; temporary read failures retain the last valid snapshot as STALE.
+    Export failures/partial refreshes or data older than 15 minutes are also STALE,
+    with the last successful refresh time shown, and cannot activate blue. Old
+    snapshots never silently appear current. Local times use America/Los_Angeles,
+    including daylight saving transitions. Stage/voice events require the bot to
+    see their channel and verify its restriction flag. Restricted or unverifiable
+    channel events are excluded; external events need no invented restriction
+    flag. Descriptions, attendees, links and credentials are absent from the file.
+    Compact spacing and a combined daytime weather-source/observation footer make
+    room without shrinking clock, weather or solar fonts. Long text wraps; unusually
+    large combined content retains the existing scrolling fallback.
+  </p>
+  <p>
+    Both alert colors fade smoothly inward across 5% of the window's shorter
+    dimension (54 pixels at 1920×1080), with softly rounded corners. Rendering is
+    static, cached and click-through; it never reserves space or resizes photos.
+    A fresh imminent event also adds a centered top caption over the daytime
+    photo viewport: wrapped title, Pacific start date/time and a prominent
+    countdown. It uses the bottom caption's soft dark styling without moving the
+    bottom caption or sidebar. It remains visible under a red warning, and clears
+    when the event starts, is canceled/rescheduled outside 24 hours, or becomes
+    stale/unavailable. Night mode retains its existing event placement. Countdown
+    text is recalculated from the start timestamp every five seconds, never shows
+    seconds, and says “Starts in less than a minute” during the final minute.
+  </p>
+  <p>
     To schedule overnight blackouts, enable <em>Night Mode Schedule</em> in the GUI and set
     start and end times (24-hour <code>HH:MM</code> format). The slideshow pauses at the
     start time, switches to a separate full-screen night information display, and

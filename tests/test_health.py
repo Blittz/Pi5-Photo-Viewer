@@ -66,7 +66,7 @@ class ProbeTests(unittest.TestCase):
 
 class HealthTests(unittest.TestCase):
     def manager(self):
-        with patch('utils.weather_client.WeatherClient.fetch_weather'), patch.object(health_monitor.HealthMonitor, '_start_probe'):
+        with patch('utils.weather_client.WeatherClient.fetch_weather'), patch.object(health_monitor.HealthMonitor, '_start_probe'), patch('utils.event_client.EventClient.refresh'):
             manager = SlideshowManager([], image_paths=[], weather_enabled=True,
                                        weather_font_size=29, night_start='21:00', night_end='05:30',
                                        night_display_brightness=40)

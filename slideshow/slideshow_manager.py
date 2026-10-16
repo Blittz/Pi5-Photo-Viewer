@@ -8,6 +8,8 @@ from .image_viewer import ImageViewer, SUPPORTED_TRANSITIONS
 from .idle_cursor import IdleCursor
 from .health_indicator import HealthEdge
 from utils.health_monitor import HealthMonitor
+from utils.event_client import EventClient
+from utils.scheduled_events import event_view
 from .night_display import NightDisplay, DEFAULT_NIGHT_BRIGHTNESS
 from utils.weather_client import WeatherClient
 from utils.solar import MEDFORD_TIMEZONE, solar_times
@@ -157,6 +159,13 @@ class SlideshowManager(QWidget):
 
         self.health_monitor = HealthMonitor(self.folders, self._health_weather_check, self)
         self.health_monitor.issuesChanged.connect(self._apply_health_issues)
+        self.event_client = EventClient(self)
+        self.event_client.changed.connect(self._refresh_event_view)
+        self.event_timer = QTimer(self)
+        self.event_timer.setInterval(5000)
+        self.event_timer.timeout.connect(self._refresh_event_view)
+        self.event_timer.start()
+        self._refresh_event_view()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -168,7 +177,19 @@ class SlideshowManager(QWidget):
         self.viewer.sidebar.set_health_issues(issues)
         self.night_display.set_health_issues(issues)
         brightness = self.night_display.brightness if self.blackout_active else None
-        self.health_edge.set_health(issues, brightness)
+        imminent = getattr(self, "_event_view", {}).get("imminent", False)
+        self.health_edge.set_health(issues, brightness, imminent=imminent)
+        self.viewer.set_event_caption(self._event_view if imminent and not self.blackout_active else None)
+
+    def _refresh_event_view(self):
+        if not hasattr(self, "event_client"):
+            return
+        view = event_view(self.event_client.snapshot, self.event_client.read_failed)
+        if view != getattr(self, "_event_view", None):
+            self._event_view = view
+            self.viewer.sidebar.set_event_view(view)
+            self.night_display.set_event_view(view)
+            self._refresh_health_indicator()
 
     def _refresh_health_indicator(self):
         if hasattr(self, "health_monitor"):
@@ -276,6 +297,8 @@ class SlideshowManager(QWidget):
         # Stop timers when the slideshow window closes to ensure there are no
         # lingering updates running in the background.
         self.health_monitor.stop()
+        self.event_client.stop()
+        self.event_timer.stop()
         self.idle_cursor.stop()
         self.slideshow_timer.stop()
         self.refresh_timer.stop()

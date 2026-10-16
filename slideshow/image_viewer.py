@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
     QLabel,
 )
 from .quiet_sidebar import QuietSidebar
+from .event_caption import EventCaption
 
 from PIL import Image, ExifTags
 
@@ -137,6 +138,7 @@ class ImageViewer(QGraphicsView):
         self.metadata_label.setTextFormat(Qt.TextFormat.RichText)
         self.metadata_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.metadata_label.hide()
+        self.event_caption = EventCaption(self.viewport())
         self.metadata_horizontal_padding = 32
         self.overlay_margin = 18
         self._photo_folder_text = ""
@@ -618,8 +620,16 @@ class ImageViewer(QGraphicsView):
         self.sidebar.setGeometry(self.width() - width, 0, width, self.height())
         self.sidebar.raise_()
 
+    def set_event_caption(self, view):
+        self.event_caption.set_view(view)
+        self._position_event_caption()
+
+    def _position_event_caption(self):
+        self.event_caption.position(self.metadata_label, (self.folder_font_size / 24)**.3)
+
     def _update_overlay_positions(self):
         self._update_metadata_position()
+        self._position_event_caption()
 
     def _calculate_metadata_max_width(self):
         viewport_limit = max(0, self.viewport().width() - self.overlay_margin * 2)

@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 )
 from utils.solar import MEDFORD_TIMEZONE
 from .health_indicator import HealthNotice
+from .next_session import NextSession
 
 PRIMARY = '#f3eee5'
 SECONDARY = '#b8b6b1'
@@ -192,6 +193,8 @@ class QuietSidebar(QScrollArea):
             value=label('—'); cell.addWidget(value); self.solar_row.addLayout(cell,1)
             self.solar_icons.append(icon); self.solar_labels.append(value); self.solar_titles.append(heading)
         self.layout.addLayout(self.solar_row)
+        self.event_panel=NextSession(self.content)
+        self.layout.addWidget(self.event_panel)
         self.source_label=label('NWS · KMFR',muted=True)
         self.status_label=label('Observation unavailable',muted=True,wrap=True)
         self.layout.addWidget(self.source_label); self.layout.addWidget(self.status_label)
@@ -236,6 +239,11 @@ class QuietSidebar(QScrollArea):
         self.weather_panel.setVisible(True)
         self.apply_metrics()
 
+    def set_event_view(self, view):
+        self.event_panel.set_view(view, getattr(self, "primary", PRIMARY),
+                                  getattr(self, "secondary", SECONDARY), getattr(self, "brightness", None))
+        self.apply_metrics()
+
     def set_health_issues(self, issues):
         self.health_notice.set_health(issues, getattr(self, "brightness", None))
         self.apply_metrics()
@@ -245,6 +253,8 @@ class QuietSidebar(QScrollArea):
                        *self.solar_icons, *self.solar_titles, *self.solar_labels,
                        *self.dividers):
             widget.setVisible(enabled)
+        if self.event_panel.view and not hasattr(self, "brightness"):
+            self.source_label.hide()
 
     def resizeEvent(self,event):
         super().resizeEvent(event)
@@ -263,10 +273,15 @@ class QuietSidebar(QScrollArea):
 
     def _set_metrics(self,scale):
         self.scale=scale
-        margin=round(46*scale); gap=max(5,round(12*scale))
-        bottom = 8 if self.health_notice.issues else 30
-        self.layout.setContentsMargins(margin,round(45*scale),margin,round(bottom*scale)); self.layout.setSpacing(gap)
-        self.weather_layout.setSpacing(round(22*scale)); self.grid.setHorizontalSpacing(round(24*scale)); self.grid.setVerticalSpacing(round(10*scale))
+        compact=bool(self.event_panel.view)
+        if compact:
+            self.source_label.hide()
+            status=self._weather_lines[6] or 'Observation unavailable'
+            self.status_label.setText('NWS · KMFR · '+status.replace(' · Fetched','\nFetched').replace(' · Update failed','\nUpdate failed'))
+        margin=round(46*scale); gap=max(4,round((3 if compact else 12)*scale))
+        bottom = 6 if compact else 8 if self.health_notice.issues else 30
+        self.layout.setContentsMargins(margin,round((12 if compact else 45)*scale),margin,round(bottom*scale)); self.layout.setSpacing(gap)
+        self.weather_layout.setSpacing(round((4 if compact else 22)*scale)); self.grid.setHorizontalSpacing(round(24*scale)); self.grid.setVerticalSpacing(round((6 if compact else 10)*scale))
         self.time_row.setSpacing(round(12*scale)); self.solar_row.setSpacing(round(30*scale))
         def font(label,pixels,weight=QFont.Weight.Normal):
             f=QFont('DejaVu Sans'); f.setPixelSize(max(12,round(pixels*scale))); f.setWeight(weight); label.setFont(f)
@@ -313,6 +328,7 @@ class QuietSidebar(QScrollArea):
         wrap_height(self.feels_label,column)
         available=self.viewport().width()-2*margin
         self.health_notice.set_metrics(14*scale, available)
+        self.event_panel.set_metrics(scale, available)
         wrap_height(self.date_label,available)
         wrap_height(self.status_label,available)
         detail_column=(available-round(36*scale)-2*round(12*scale))/2

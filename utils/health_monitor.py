@@ -1,4 +1,5 @@
 """Debounced status aggregation and bounded, non-blocking system probes."""
+import atexit
 import json
 import logging
 from pathlib import Path
@@ -15,6 +16,20 @@ CONFIRM_FAILURES = 2
 # Jobs outlive a closing window only until their killed child has been reaped.
 # Strong ownership prevents garbage collection of callbacks during Qt teardown.
 _ACTIVE_PROBES = set()
+
+
+def _shutdown_probes():
+    # Only interpreter shutdown may briefly wait to reap an already-killed child.
+    # Normal UI checks and window closes remain entirely asynchronous.
+    for job in list(_ACTIVE_PROBES):
+        try:
+            job.cancel()
+            job.process.waitForFinished(100)
+        except RuntimeError:
+            pass  # Qt may already have deleted an object during app teardown.
+
+
+atexit.register(_shutdown_probes)
 
 
 class HealthState:
