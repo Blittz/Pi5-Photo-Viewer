@@ -45,19 +45,30 @@
     restart the countdown.
   </p>
   <p>
-    All preferences are saved to <code>settings.json</code> by the GUI.
-    To enable the optional weather overlay, provide the keys below:
+    All preferences are saved locally to <code>settings.json</code> by the GUI.
+    On a new installation, copy <code>settings.example.json</code> to
+    <code>settings.json</code> and select photo folders. Local settings, legacy
+    <code>config.json</code>, credentials, and photo files are excluded from Git.
+    Enable the optional weather overlay with <code>weather_enabled: true</code>.
+    Current observations come from NWS station KMFR (Medford Airport), in °F and mph.
+    No API key is needed; saved OpenWeather settings remain stored but unused.
   </p>
-  <pre><code>{
-  "weather_enabled": false,
-  "weather_api_key": "&lt;OpenWeather API key&gt;",
-  "weather_location": "&lt;City name or latitude,longitude&gt;",
-  "weather_units": "metric"
-}</code></pre>
   <p>
-    Switch <code>weather_enabled</code> to <code>true</code> after supplying valid values.
-    <code>weather_units</code> accepts any unit string supported by your weather provider
-    (OpenWeather supports <code>standard</code>, <code>metric</code>, or <code>imperial</code>).
+    Requests time out after 20 seconds. Successful requests refresh every five minutes;
+    failures retain the last reading, mark it STALE, and retry after 10, 20, 40, then
+    60 minutes. Success resets this interval. Observations older than 90 minutes are
+    also marked STALE, even when fetching succeeds. Observation time and fetch time
+    are displayed separately in America/Los_Angeles, including daylight saving time.
+    Missing fields are omitted or labeled unavailable; feels-like uses NWS heat index
+    or wind chill when available. Icons use NWS rather than OpenWeather.
+  </p>
+  <p>
+    Sunrise and sunset are calculated locally for KMFR (42.37503, -122.87696) using
+    NOAA solar equations and standard refraction. Calculations refresh within one
+    minute of the Pacific date changing, even when the weather service is unavailable.
+    These are approximate horizon times; nearby terrain and atmospheric conditions
+    can change the visible sunrise or sunset. No additional packages or services
+    are required for the calculations.
   </p>
   <p>
     To schedule overnight blackouts, enable <em>Night Mode Schedule</em> in the GUI and set

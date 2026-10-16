@@ -17,6 +17,7 @@ from PyQt6.QtCore import (
     QUrl,
 )
 from PyQt6.QtGui import (
+    QImageReader,
     QPixmap,
     QTransform,
     QPainter,
@@ -259,7 +260,7 @@ class ImageViewer(QGraphicsView):
         self.weather_updated_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
-        self.weather_updated_label.setWordWrap(False)
+        self.weather_updated_label.setWordWrap(True)
         self.weather_updated_label.setVisible(False)
         self.weather_updated_label.setTextFormat(Qt.TextFormat.RichText)
         self.weather_updated_label.setAttribute(
@@ -378,7 +379,9 @@ class ImageViewer(QGraphicsView):
         self._update_overlay_positions()
 
     def set_image(self, image_path, duration=None, transition=None):
-        pixmap = QPixmap(image_path)
+        reader = QImageReader(image_path)
+        reader.setAutoTransform(True)
+        pixmap = QPixmap.fromImage(reader.read())
         if pixmap.isNull():
             self._photo_folder_text = ""
             self._photo_date_text = ""
@@ -1101,15 +1104,9 @@ class ImageViewer(QGraphicsView):
         self.weather_sun_label.setVisible(False)
         apply_html(self.weather_updated_label, updated_text)
 
-        should_show = (
-            self.weather_location_label.isVisible()
-            or self.weather_temperature_label.isVisible()
-            or self.weather_condition_label.isVisible()
-            or self.weather_feels_like_label.isVisible()
-            or self.weather_humidity_wind_label.isVisible()
-            or self.weather_updated_label.isVisible()
-            or has_icon
-        )
+        # Child isVisible() is false while the parent is hidden, even with text.
+        should_show = any((location_text, temperature_text, summary_text,
+                           feels_like_text, humidity_wind_text, updated_text)) or has_icon
         self.weather_container.setVisible(should_show)
         if should_show:
             self.weather_container.raise_()

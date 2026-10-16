@@ -3,3 +3,26 @@ __pycache__/
 *.pyc
 .settings.json
 *.py~
+
+# Private local preferences and credentials (use the example files on a new install).
+/settings.json
+/config.json
+.env
+.env.*
+*.pem
+*.key
+
+# Local photo collections and exports must stay out of Git.
+/photos/
+*.jpg
+*.jpeg
+*.JPG
+*.JPEG
+*.png
+*.heic
+*.HEIC
+*.webp
+*.tif
+*.tiff
+*.bmp
+*.gif

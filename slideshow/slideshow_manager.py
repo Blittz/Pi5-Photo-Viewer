@@ -1,11 +1,12 @@
 import os
 import random
-from datetime import datetime, time as time_cls
+from datetime import datetime, time as time_cls, timezone
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
 from PyQt6.QtGui import QImageReader
 from .image_viewer import ImageViewer, SUPPORTED_TRANSITIONS
 from utils.weather_client import WeatherClient
+from utils.solar import MEDFORD_TIMEZONE, solar_times
 
 SUPPORTED_IMAGE_FORMATS = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp')
 
@@ -67,7 +68,11 @@ class SlideshowManager(QWidget):
         self._weather_refresh_interval_ms = 5 * 60 * 1000  # 5 minutes
         self._latest_weather_summary = None
         self._weather_last_success = None
-        self._weather_units = (weather_units or "metric").strip() or "metric"
+        self._weather_units = "imperial"
+        self._weather_failures = 0
+        self._weather_error = None
+        self._solar_date = None
+        self._solar_events = {}
         if transitions is None:
             self.transitions = list(SUPPORTED_TRANSITIONS)
         else:
@@ -223,21 +228,26 @@ class SlideshowManager(QWidget):
         self.night_timer.stop()
         if self.weather_timer is not None:
             self.weather_timer.stop()
+        if self.weather_client is not None:
+            self.weather_client.cancel()
+        if hasattr(self, "weather_status_timer"):
+            self.weather_status_timer.stop()
         super().closeEvent(event)
 
     def _initialize_weather(self, api_key, location, units):
-        self._weather_units = (units or "metric").strip() or "metric"
-        self.weather_client = WeatherClient(api_key, location, units, parent=self)
+        self._weather_units = "imperial"
+        self.weather_client = WeatherClient(parent=self)
         self.weather_client.weatherFetched.connect(self._on_weather_success)
         self.weather_client.weatherError.connect(self._on_weather_error)
         self.weather_timer = QTimer(self)
-        self.weather_timer.setInterval(self._weather_refresh_interval_ms)
+        self.weather_timer.setSingleShot(True)
         self.weather_timer.timeout.connect(self._request_weather_update)
-        self.weatherSummaryAvailable.connect(self._handle_weather_summary)
+        self.weather_status_timer = QTimer(self)
+        self.weather_status_timer.setInterval(60000)
+        self.weather_status_timer.timeout.connect(self._refresh_weather_overlay)
+        self.weather_status_timer.start()
+        self._refresh_weather_overlay()
         self._request_weather_update()
-        self.weather_timer.start()
-        if self._latest_weather_summary is not None:
-            self._handle_weather_summary(True, self._latest_weather_summary)
 
     def _request_weather_update(self):
         if self.weather_client is not None:
@@ -245,35 +255,51 @@ class SlideshowManager(QWidget):
 
     def _on_weather_success(self, payload):
         self._latest_weather_summary = payload
+        self._weather_last_success = datetime.now(timezone.utc)
+        self._weather_failures = 0
+        self._weather_error = None
+        self.weather_timer.start(self._weather_refresh_interval_ms)
+        self._refresh_weather_overlay()
         self.weatherSummaryAvailable.emit(True, payload)
 
     def _on_weather_error(self, message):
-        summary = {"error": message}
-        self._latest_weather_summary = summary
-        self.weatherSummaryAvailable.emit(False, summary)
+        self._weather_failures = min(self._weather_failures + 1, 4)
+        self._weather_error = message
+        # Retry after 10, 20, 40, then 60 minutes; success restores five minutes.
+        delay = min(self._weather_refresh_interval_ms * 2 ** self._weather_failures, 60 * 60 * 1000)
+        self.weather_timer.start(delay)
+        self._refresh_weather_overlay()
+        self.weatherSummaryAvailable.emit(False, {"error": message})
 
-    def _handle_weather_summary(self, success, payload):
-        if success:
-            self._weather_last_success = datetime.now()
-            weather_text = self._format_weather_text(payload, self._weather_last_success)
-            icon_code = None
-            if isinstance(payload, dict):
-                icon_code = payload.get("icon")
-            overlay = {"text": weather_text}
-            if icon_code:
-                overlay["icon"] = icon_code
-            self.viewer.set_weather_overlay(overlay)
-            return
+    def _refresh_weather_overlay(self):
+        now = datetime.now(MEDFORD_TIMEZONE)
+        if now.date() != self._solar_date:
+            self._solar_date = now.date()
+            self._solar_events = solar_times(self._solar_date)
+        payload = dict(self._latest_weather_summary or {"city": "Medford Airport"})
+        payload.update(self._solar_events)
+        text = self._format_weather_text(payload, self._weather_last_success)
+        self.viewer.set_weather_overlay({"text": text, "icon": payload.get("icon")})
 
-        if self._weather_last_success is None:
-            self.viewer.set_weather_overlay(None)
-            return
-
-        error_message = ""
-        if isinstance(payload, dict):
-            error_message = payload.get("error", "")
-        stale_text = self._format_stale_weather_text(error_message, self._weather_last_success)
-        self.viewer.set_weather_overlay({"text": stale_text})
+    def _weather_status_text(self, payload, now=None):
+        now = now or datetime.now(timezone.utc)
+        observed = payload.get("observed_at")
+        try:
+            observation = datetime.fromisoformat(observed)
+            age = (now - observation).total_seconds()
+        except (ValueError, TypeError):
+            observation, age = None, None
+        stale = bool(self._weather_error) or age is None or age > 90 * 60 or age < -5 * 60
+        status = "STALE — " if stale else ""
+        if observation is not None:
+            status += "Observed " + observation.astimezone(MEDFORD_TIMEZONE).strftime("%b %d %I:%M %p %Z")
+        else:
+            status += "Observation unavailable"
+        if self._weather_last_success is not None:
+            status += " · Fetched " + self._weather_last_success.astimezone(MEDFORD_TIMEZONE).strftime("%b %d %I:%M %p %Z")
+        if self._weather_error:
+            status += " · Update failed; retry in " + str(self.weather_timer.interval() // 60000) + " min"
+        return status
 
     def _format_weather_text(self, payload, timestamp):
         if not isinstance(payload, dict):
@@ -289,9 +315,15 @@ class SlideshowManager(QWidget):
         if temperature_line:
             lines[1] = temperature_line
 
+        if not temperature_line:
+            lines[1] = "Temperature unavailable"
+
         summary_line = self._format_condition_line(payload)
         if summary_line:
             lines[2] = summary_line
+
+        if not summary_line:
+            lines[2] = "Conditions unavailable"
 
         feels_like_line = self._format_feels_like_line(payload)
         if feels_like_line:
@@ -309,21 +341,12 @@ class SlideshowManager(QWidget):
         if sun_line:
             lines[5] = sun_line
 
-        lines[6] = f"Updated {self._format_time(timestamp)}"
+        lines[6] = self._weather_status_text(payload)
 
         # Remove trailing empty lines while preserving positional blanks in between entries.
         while lines and lines[-1] == "":
             lines.pop()
 
-        return "\n".join(lines)
-
-    def _format_stale_weather_text(self, error_message, timestamp):
-        if error_message:
-            message = str(error_message).strip() or "Weather unavailable"
-        else:
-            message = "Weather unavailable"
-        lines = [message]
-        lines.append(f"Last update {self._format_time(timestamp)}")
         return "\n".join(lines)
 
     def _format_temperature(self, value):
@@ -450,11 +473,7 @@ class SlideshowManager(QWidget):
         return f"🌇 {sunset_text}"
 
     def _format_solar_time(self, timestamp_value, timezone_offset):
-        if timezone_offset is None:
-            display_time = datetime.fromtimestamp(timestamp_value)
-        else:
-            display_time = datetime.utcfromtimestamp(timestamp_value + timezone_offset)
-        return self._format_time(display_time)
+        return self._format_time(datetime.fromtimestamp(timestamp_value, MEDFORD_TIMEZONE))
 
     def _format_location_line(self, payload):
         city = payload.get("city") or payload.get("name")

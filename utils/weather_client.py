@@ -1,237 +1,122 @@
-"""Utility for retrieving current weather conditions from OpenWeather."""
-from __future__ import annotations
-
+"""Asynchronous NWS observations for Medford Airport; no API key required."""
 import json
-from dataclasses import dataclass
-from typing import Optional, Tuple
-from urllib.parse import urlencode
+import math
+from datetime import datetime, timezone
 
-from PyQt6.QtCore import QObject, QUrl, pyqtSignal
+from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
-
-OPENWEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
-
-
-@dataclass
-class WeatherSummary:
-    """Parsed subset of data returned from the weather provider."""
-
-    condition: Optional[str]
-    temperature: Optional[float]
-    feels_like: Optional[float]
-    humidity: Optional[float]
-    wind_speed: Optional[float]
-    wind_direction: Optional[float]
-    sunrise: Optional[int]
-    sunset: Optional[int]
-    timezone_offset: Optional[int]
-    city: Optional[str]
-    region: Optional[str]
-    country: Optional[str]
-    icon: Optional[str]
-
-    def as_dict(self) -> dict:
-        return {
-            "condition": self.condition,
-            "temperature": self.temperature,
-            "feels_like": self.feels_like,
-            "humidity": self.humidity,
-            "wind_speed": self.wind_speed,
-            "wind_direction": self.wind_direction,
-            "sunrise": self.sunrise,
-            "sunset": self.sunset,
-            "timezone_offset": self.timezone_offset,
-            "city": self.city,
-            "region": self.region,
-            "country": self.country,
-            "icon": self.icon,
-        }
+NWS_URL = "https://api.weather.gov/stations/KMFR/observations/latest"
+USER_AGENT = b"Pi5-Photo-Viewer/1.0 (Medford Airport KMFR weather display)"
+REQUEST_TIMEOUT_MS = 20000
 
 
 class WeatherClient(QObject):
-    """Fetches weather data asynchronously using ``QNetworkAccessManager``."""
-
     weatherFetched = pyqtSignal(dict)
     weatherError = pyqtSignal(str)
 
-    def __init__(
-        self,
-        api_key: str,
-        location: str,
-        units: str = "metric",
-        parent: Optional[QObject] = None,
-    ) -> None:
+    def __init__(self, api_key="", location="", units="imperial", parent=None):
+        # Legacy arguments remain accepted; saved OpenWeather preferences are untouched.
         super().__init__(parent)
-        self.api_key = (api_key or "").strip()
-        self.location = (location or "").strip()
-        self.units = (units or "metric").strip() or "metric"
         self._network = QNetworkAccessManager(self)
-        self._pending_reply: Optional[QNetworkReply] = None
+        self._pending_reply = None
+        self._timeout = QTimer(self)
+        self._timeout.setSingleShot(True)
+        self._timeout.timeout.connect(self._on_timeout)
 
-    def fetch_weather(self) -> None:
-        """Trigger a weather request if configuration appears valid."""
-
-        if not self.api_key or not self.location:
-            self.weatherError.emit("Weather configuration is incomplete.")
-            return
-
-        request_url = self._build_request_url()
-        if request_url is None:
-            self.weatherError.emit("Unable to parse weather location.")
-            return
-
+    def fetch_weather(self):
         if self._pending_reply is not None:
-            try:
-                self._pending_reply.finished.disconnect(self._on_reply_finished)  # type: ignore[arg-type]
-            except TypeError:
-                pass
-            self._pending_reply.abort()
-            self._pending_reply.deleteLater()
-            self._pending_reply = None
-
-        request = QNetworkRequest(request_url)
+            return
+        request = QNetworkRequest(QUrl(NWS_URL))
+        request.setRawHeader(b"User-Agent", USER_AGENT)
+        request.setRawHeader(b"Accept", b"application/geo+json")
         self._pending_reply = self._network.get(request)
-        self._pending_reply.finished.connect(self._on_reply_finished)  # type: ignore[arg-type]
+        self._pending_reply.finished.connect(self._on_reply_finished)
+        self._timeout.start(REQUEST_TIMEOUT_MS)
 
-    def _on_reply_finished(self) -> None:
-        reply_object = self.sender()
-        if not isinstance(reply_object, QNetworkReply):
+    def cancel(self):
+        self._timeout.stop()
+        reply, self._pending_reply = self._pending_reply, None
+        if reply is not None:
+            reply.finished.disconnect(self._on_reply_finished)
+            reply.abort()
+            reply.deleteLater()
+
+    def _on_timeout(self):
+        self.cancel()
+        self.weatherError.emit("NWS request timed out")
+
+    def _on_reply_finished(self):
+        reply = self.sender()
+        if reply is not self._pending_reply:
             return
-
-        if reply_object is self._pending_reply:
-            self._pending_reply = None
-
-        reply_object.deleteLater()
-
-        if reply_object.error() != QNetworkReply.NetworkError.NoError:
-            self.weatherError.emit(reply_object.errorString())
-            return
-
+        self._pending_reply = None
+        self._timeout.stop()
         try:
-            payload = json.loads(bytes(reply_object.readAll()).decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            self.weatherError.emit(f"Invalid weather response: {exc}")
-            return
+            if reply.error() != QNetworkReply.NetworkError.NoError:
+                self.weatherError.emit("NWS request failed")
+                return
+            payload = json.loads(bytes(reply.readAll()).decode("utf-8"))
+            summary = self._parse_summary(payload)
+            if summary is None:
+                self.weatherError.emit("Invalid NWS observation")
+                return
+            summary["fetched_at"] = datetime.now(timezone.utc).isoformat()
+            self.weatherFetched.emit(summary)
+        except (UnicodeDecodeError, ValueError, TypeError):
+            self.weatherError.emit("Invalid NWS response")
+        finally:
+            reply.deleteLater()
 
-        summary = self._parse_summary(payload)
-        if summary is None:
-            self.weatherError.emit("Weather response missing expected fields.")
-            return
-
-        self.weatherFetched.emit(summary.as_dict())
-
-    def _build_request_url(self) -> Optional[QUrl]:
-        params = {
-            "appid": self.api_key,
-            "units": self.units or "metric",
+    @staticmethod
+    def _quantity(properties, field, kind):
+        quantity = properties.get(field)
+        if not isinstance(quantity, dict):
+            return None
+        value = quantity.get("value")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            return None
+        unit_code = quantity.get("unitCode")
+        if not isinstance(unit_code, str):
+            return None
+        if kind == "speed" and value < 0:
+            return None
+        unit = unit_code.split(":")[-1]
+        conversions = {
+            "temperature": {"degC": lambda x: x * 9 / 5 + 32, "degF": lambda x: x, "K": lambda x: (x - 273.15) * 9 / 5 + 32},
+            "speed": {"km_h-1": lambda x: x / 1.609344, "m_s-1": lambda x: x * 2.2369362921, "mi_h-1": lambda x: x, "kn": lambda x: x * 1.150779448},
+            "direction": {"degree_(angle)": lambda x: x % 360},
+            "humidity": {"percent": lambda x: x if 0 <= x <= 100 else None},
         }
+        convert = conversions[kind].get(unit)
+        return convert(value) if convert else None
 
-        coordinates = self._parse_coordinates(self.location)
-        if coordinates is not None:
-            lat, lon = coordinates
-            params["lat"] = f"{lat:.6f}"
-            params["lon"] = f"{lon:.6f}"
-        else:
-            params["q"] = self.location
-
-        query = urlencode(params)
-        url = QUrl(f"{OPENWEATHER_URL}?{query}")
-        if not url.isValid():
+    @classmethod
+    def _parse_summary(cls, payload):
+        if not isinstance(payload, dict) or not isinstance(payload.get("properties"), dict):
             return None
-        return url
-
-    @staticmethod
-    def _parse_coordinates(location: str) -> Optional[Tuple[float, float]]:
-        pieces = [piece.strip() for piece in location.split(",")]
-        if len(pieces) != 2:
+        p = payload["properties"]
+        if "timestamp" not in p:
             return None
         try:
-            lat = float(pieces[0])
-            lon = float(pieces[1])
-        except ValueError:
+            observed = datetime.fromisoformat(p["timestamp"].replace("Z", "+00:00"))
+            if observed.tzinfo is None:
+                return None
+        except (ValueError, TypeError, AttributeError):
             return None
-        return lat, lon
-
-    @staticmethod
-    def _parse_summary(payload: dict) -> Optional[WeatherSummary]:
-        weather_list = payload.get("weather")
-        if isinstance(weather_list, list) and weather_list:
-            weather_entry = weather_list[0]
-            condition = weather_entry.get("description")
-            icon = weather_entry.get("icon")
-        else:
-            condition = None
-            icon = None
-
-        main_section = payload.get("main")
-        temperature = None
-        feels_like = None
-        humidity = None
-        if isinstance(main_section, dict):
-            temp_val = main_section.get("temp")
-            if isinstance(temp_val, (int, float)):
-                temperature = float(temp_val)
-            feels_like_val = main_section.get("feels_like")
-            if isinstance(feels_like_val, (int, float)):
-                feels_like = float(feels_like_val)
-            humidity_val = main_section.get("humidity")
-            if isinstance(humidity_val, (int, float)):
-                humidity = float(humidity_val)
-
-        wind_section = payload.get("wind")
-        wind_speed = None
-        wind_direction = None
-        if isinstance(wind_section, dict):
-            speed_val = wind_section.get("speed")
-            if isinstance(speed_val, (int, float)):
-                wind_speed = float(speed_val)
-            deg_val = wind_section.get("deg")
-            if isinstance(deg_val, (int, float)):
-                wind_direction = float(deg_val)
-
-        sys_section = payload.get("sys")
-        sunrise = None
-        sunset = None
-        country = None
-        region = None
-        if isinstance(sys_section, dict):
-            sunrise_val = sys_section.get("sunrise")
-            if isinstance(sunrise_val, int):
-                sunrise = sunrise_val
-            sunset_val = sys_section.get("sunset")
-            if isinstance(sunset_val, int):
-                sunset = sunset_val
-            country_val = sys_section.get("country")
-            if isinstance(country_val, str):
-                country = country_val.strip()
-            region_val = sys_section.get("state")
-            if isinstance(region_val, str):
-                region = region_val.strip()
-
-        city = payload.get("name")
-        if isinstance(city, str):
-            city = city.strip()
-        else:
-            city = None
-
-        timezone_offset = payload.get("timezone")
-        if not isinstance(timezone_offset, int):
-            timezone_offset = None
-
-        return WeatherSummary(
-            condition=condition,
-            temperature=temperature,
-            feels_like=feels_like,
-            humidity=humidity,
-            wind_speed=wind_speed,
-            wind_direction=wind_direction,
-            sunrise=sunrise,
-            sunset=sunset,
-            timezone_offset=timezone_offset,
-            city=city,
-            region=region,
-            country=country,
-            icon=icon,
-        )
-
+        feels_like = cls._quantity(p, "heatIndex", "temperature")
+        if feels_like is None:
+            feels_like = cls._quantity(p, "windChill", "temperature")
+        condition = p.get("textDescription")
+        icon = p.get("icon")
+        return {
+            "city": "Medford Airport", "region": None, "country": None,
+            "condition": condition if isinstance(condition, str) else None,
+            "temperature": cls._quantity(p, "temperature", "temperature"),
+            "feels_like": feels_like,
+            "humidity": cls._quantity(p, "relativeHumidity", "humidity"),
+            "wind_speed": cls._quantity(p, "windSpeed", "speed"),
+            "wind_direction": cls._quantity(p, "windDirection", "direction"),
+            "observed_at": observed.isoformat(),
+            "icon": icon if isinstance(icon, str) and icon.startswith("https://api.weather.gov/") else None,
+        }

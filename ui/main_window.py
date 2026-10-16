@@ -145,23 +145,25 @@ class MainWindow(QWidget):
 
         weather_layout = QGridLayout()
 
-        weather_layout.addWidget(QLabel("API Key:"), 0, 0)
+        weather_layout.addWidget(QLabel("Saved OpenWeather key (unused):"), 0, 0)
         self.weather_api_key_input = QLineEdit()
         self.weather_api_key_input.setPlaceholderText("OpenWeather API key")
+        self.weather_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         weather_layout.addWidget(self.weather_api_key_input, 0, 1)
 
-        weather_layout.addWidget(QLabel("Location:"), 1, 0)
+        weather_layout.addWidget(QLabel("Saved OpenWeather location (unused):"), 1, 0)
         self.weather_location_input = QLineEdit()
         self.weather_location_input.setPlaceholderText("City name or latitude,longitude")
         weather_layout.addWidget(self.weather_location_input, 1, 1)
 
-        weather_layout.addWidget(QLabel("Units:"), 2, 0)
+        weather_layout.addWidget(QLabel("Saved OpenWeather units (unused):"), 2, 0)
         self.weather_units_input = QLineEdit()
         self.weather_units_input.setPlaceholderText("metric / imperial / standard")
         weather_layout.addWidget(self.weather_units_input, 2, 1)
 
         weather_layout.setColumnStretch(1, 1)
         layout.addLayout(weather_layout)
+        layout.addWidget(QLabel("Current weather: NWS · Medford Airport (KMFR) · °F / mph"))
 
         self.weather_enable_checkbox.toggled.connect(self.update_weather_fields_enabled)
         self.update_weather_fields_enabled()
@@ -585,7 +587,7 @@ class MainWindow(QWidget):
             self.weather_location_input,
             self.weather_units_input,
         ):
-            widget.setEnabled(enabled)
+            widget.setEnabled(False)
 
     def update_night_fields_enabled(self):
         enabled = self.night_mode_checkbox.isChecked()

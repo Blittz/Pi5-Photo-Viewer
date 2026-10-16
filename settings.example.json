@@ -1,0 +1,23 @@
+{
+    "folders": [],
+    "shuffle": true,
+    "motion": true,
+    "duration": 15,
+    "overlay_folder_font_size": 40,
+    "overlay_date_font_size": 31,
+    "overlay_weather_font_size": 29,
+    "overlay_title_font_size": 40,
+    "transitions": [
+        "crossfade",
+        "slide-horizontal",
+        "slide-vertical",
+        "carousel"
+    ],
+    "weather_enabled": true,
+    "weather_api_key": "",
+    "weather_location": "Medford,OR,US",
+    "weather_units": "imperial",
+    "night_mode_enabled": true,
+    "night_start": "21:00",
+    "night_end": "05:30"
+}
