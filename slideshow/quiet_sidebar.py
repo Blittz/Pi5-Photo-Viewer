@@ -46,6 +46,8 @@ class LineIcon(QWidget):
     def __init__(self, kind='unknown', parent=None, night=False, accent=True):
         super().__init__(parent)
         self.kind, self.night, self.accent = kind, night, accent
+        self.ink = None
+        self.background = BACKGROUND
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
@@ -60,7 +62,7 @@ class LineIcon(QWidget):
         size = min(self.width(), self.height())
         p.translate((self.width()-size)/2, (self.height()-size)/2)
         p.scale(size/100, size/100)
-        p.setPen(QPen(QColor(AMBER if self.accent else PRIMARY), 3.2, Qt.PenStyle.SolidLine,
+        p.setPen(QPen(QColor(self.ink if self.ink is not None else (AMBER if self.accent else PRIMARY)), 3.2, Qt.PenStyle.SolidLine,
                       Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
         p.setBrush(Qt.BrushStyle.NoBrush)
         def line(x,y,a,b): p.drawLine(int(x),int(y),int(a),int(b))
@@ -95,9 +97,9 @@ class LineIcon(QWidget):
             p.save(); p.translate(1,-10); p.scale(.8,.8)
             moon() if self.night else sun(42,40,14)
             p.restore()
-            p.setBrush(QColor(BACKGROUND)); cloud()
+            p.setBrush(QColor(self.background)); cloud()
         elif kind in ('cloud','rain','snow','storm','ice'):
-            p.setBrush(QColor(BACKGROUND)); cloud(); p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setBrush(QColor(self.background)); cloud(); p.setBrush(Qt.BrushStyle.NoBrush)
             if kind == 'rain':
                 for x in (32,52,72): line(x,76,x-5,88)
             elif kind == 'snow':

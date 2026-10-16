@@ -20,8 +20,22 @@ class IdleCursor(QObject):
         self.timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.timer.setInterval(timeout_ms)
         self.timer.timeout.connect(self._hide_cursor)
-        QApplication.instance().installEventFilter(self)
+        self._app_filter_active = False
+        window.installEventFilter(self)
+        window.destroyed.connect(self._remove_app_filter)
         self._track_children()
+
+    def _install_app_filter(self):
+        app = QApplication.instance()
+        if app is not None and not self._app_filter_active:
+            app.installEventFilter(self)
+            self._app_filter_active = True
+
+    def _remove_app_filter(self):
+        app = QApplication.instance()
+        if app is not None and getattr(self, '_app_filter_active', False):
+            app.removeEventFilter(self)
+        self._app_filter_active = False
 
     def _widgets(self):
         if sip.isdeleted(self.window):
@@ -76,9 +90,11 @@ class IdleCursor(QObject):
                 QTimer.singleShot(0, self._track_children)
             if watched is self.window:
                 if kind == QEvent.Type.Show:
+                    self._install_app_filter()
                     self.timer.start()
                 elif kind in (QEvent.Type.Hide, QEvent.Type.Close):
                     self.stop()
+                    self._remove_app_filter()
             if kind in (QEvent.Type.MouseMove, QEvent.Type.Enter,
                         QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease,
                         QEvent.Type.Wheel, QEvent.Type.KeyPress, QEvent.Type.TouchBegin):

@@ -2,10 +2,11 @@ import os
 import random
 from datetime import datetime, time as time_cls, timezone
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
-from PyQt6.QtWidgets import QWidget, QVBoxLayout
+from PyQt6.QtWidgets import QWidget, QStackedLayout
 from PyQt6.QtGui import QImageReader
 from .image_viewer import ImageViewer, SUPPORTED_TRANSITIONS
 from .idle_cursor import IdleCursor
+from .night_display import NightDisplay, DEFAULT_NIGHT_BRIGHTNESS
 from utils.weather_client import WeatherClient
 from utils.solar import MEDFORD_TIMEZONE, solar_times
 
@@ -48,6 +49,7 @@ class SlideshowManager(QWidget):
         weather_location="",
         weather_units="metric",
         image_paths=None,
+        night_display_brightness=DEFAULT_NIGHT_BRIGHTNESS,
     ):
         super().__init__()
 
@@ -64,6 +66,7 @@ class SlideshowManager(QWidget):
         self.blackout_active = False
         self.night_start = self._parse_time(night_start)
         self.night_end = self._parse_time(night_end)
+        self.weather_enabled = bool(weather_enabled)
         self.weather_client = None
         self.weather_timer = None
         self._weather_refresh_interval_ms = 5 * 60 * 1000  # 5 minutes
@@ -92,9 +95,13 @@ class SlideshowManager(QWidget):
         )
         self.viewer.set_weather_font_size(self.weather_font_size)
 
-        layout = QVBoxLayout()
+        self.night_display = NightDisplay(self, font_size=self.weather_font_size,
+                                          brightness=night_display_brightness)
+        layout = QStackedLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.viewer)
+        layout.addWidget(self.night_display)
+        self.display_stack = layout
         self.setLayout(layout)
 
         # Enable the slideshow window to receive keyboard focus so it can
@@ -114,6 +121,10 @@ class SlideshowManager(QWidget):
 
         self.night_timer = QTimer(self)
         self.night_timer.timeout.connect(self.evaluate_night_mode)
+        self.weather_status_timer = QTimer(self)
+        self.weather_status_timer.setInterval(60000)
+        self.weather_status_timer.timeout.connect(self._refresh_weather_overlay)
+        self.weather_status_timer.start()
 
         if image_paths is None:
             self.load_images()
@@ -137,6 +148,8 @@ class SlideshowManager(QWidget):
                 location=weather_location,
                 units=weather_units,
             )
+        else:
+            self._refresh_weather_overlay()
 
     def load_images(self):
         self.images = get_all_images_from_folders(self.folders)
@@ -197,11 +210,13 @@ class SlideshowManager(QWidget):
         self.slideshow_timer.stop()
 
     def resume(self):
-        self.slideshow_timer.start(self.duration * 1000)
+        if not self.blackout_active:
+            self.slideshow_timer.start(self.duration * 1000)
 
     def set_duration(self, seconds):
         self.duration = seconds
-        self.slideshow_timer.start(self.duration * 1000)
+        if not self.blackout_active:
+            self.slideshow_timer.start(self.duration * 1000)
 
     def toggle_shuffle(self, enabled):
         self.shuffle = enabled
@@ -236,9 +251,11 @@ class SlideshowManager(QWidget):
             self.weather_client.cancel()
         if hasattr(self, "weather_status_timer"):
             self.weather_status_timer.stop()
+        self.night_display.clock_timer.stop()
         super().closeEvent(event)
 
     def _initialize_weather(self, api_key, location, units):
+        self.weather_enabled = True
         self._weather_units = "imperial"
         self.weather_client = WeatherClient(parent=self)
         self.weather_client.weatherFetched.connect(self._on_weather_success)
@@ -246,10 +263,6 @@ class SlideshowManager(QWidget):
         self.weather_timer = QTimer(self)
         self.weather_timer.setSingleShot(True)
         self.weather_timer.timeout.connect(self._request_weather_update)
-        self.weather_status_timer = QTimer(self)
-        self.weather_status_timer.setInterval(60000)
-        self.weather_status_timer.timeout.connect(self._refresh_weather_overlay)
-        self.weather_status_timer.start()
         self._refresh_weather_overlay()
         self._request_weather_update()
 
@@ -283,7 +296,13 @@ class SlideshowManager(QWidget):
         payload = dict(self._latest_weather_summary or {"city": "Medford Airport"})
         payload.update(self._solar_events)
         text = self._format_weather_text(payload, self._weather_last_success)
-        self.viewer.set_weather_overlay({"text": text, "icon": payload.get("icon"), "summary": payload})
+        overlay = {"text": text, "icon": payload.get("icon"), "summary": payload}
+        self.viewer.set_weather_overlay(overlay if self.weather_enabled else None)
+        lines = (text.split("\n") + [""] * 7)[:7]
+        if not self.weather_enabled:
+            lines[2] = "Weather disabled"
+            lines[6] = "Local solar times · America/Los_Angeles"
+        self.night_display.set_weather(lines, payload, payload.get("icon"))
 
     def _weather_status_text(self, payload, now=None):
         now = now or datetime.now(timezone.utc)
@@ -506,13 +525,13 @@ class SlideshowManager(QWidget):
         formatted = timestamp.strftime("%I:%M %p")
         return formatted.lstrip("0")
 
-    def evaluate_night_mode(self):
+    def evaluate_night_mode(self, current_time=None):
         if self.night_start is None or self.night_end is None:
             if self.blackout_active:
                 self._exit_blackout_state()
             return
 
-        now = datetime.now().time()
+        now = datetime.now(MEDFORD_TIMEZONE).time() if current_time is None else current_time
         if self._is_within_blackout(now):
             self._enter_blackout_state()
         else:
@@ -524,11 +543,14 @@ class SlideshowManager(QWidget):
         self.blackout_active = True
         self.slideshow_timer.stop()
         self.viewer.show_black_screen()
+        self.display_stack.setCurrentWidget(self.night_display)
+        self._refresh_weather_overlay()
 
     def _exit_blackout_state(self):
         if not self.blackout_active:
             return
         self.blackout_active = False
+        self.display_stack.setCurrentWidget(self.viewer)
         if self.images:
             self.show_image(self.current_index)
         self.slideshow_timer.start(self.duration * 1000)

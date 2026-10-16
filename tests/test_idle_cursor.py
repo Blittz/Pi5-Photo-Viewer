@@ -59,6 +59,10 @@ class IdleCursorTests(unittest.TestCase):
         self.assertFalse(controller.hidden)
         self.assertNotEqual(night.cursor().shape(),Qt.CursorShape.BlankCursor)
         window.hide(); self.assertFalse(controller.timer.isActive())
+        self.assertFalse(controller._app_filter_active)
+        window.show(); APP.processEvents()
+        self.assertTrue(controller._app_filter_active)
+        QTest.qWait(90); self.assertTrue(controller.hidden)
         self.assertNotEqual(settings.cursor().shape(),Qt.CursorShape.BlankCursor)
 
 if __name__=='__main__': unittest.main()

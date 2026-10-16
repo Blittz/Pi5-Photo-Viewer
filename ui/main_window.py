@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt, QTime, QTimer, QElapsedTimer, QEvent
 from PyQt6.QtGui import QImageReader
 from slideshow.slideshow_manager import SlideshowManager, get_all_images_from_folders
 from utils.file_loader import count_images_in_folder
+from slideshow.night_display import night_brightness, DEFAULT_NIGHT_BRIGHTNESS
 import os
 import json
 import math
@@ -273,6 +274,20 @@ class MainWindow(QWidget):
         night_layout.setColumnStretch(1, 1)
         layout.addLayout(night_layout)
 
+        brightness_row = QHBoxLayout()
+        brightness_row.addWidget(QLabel("Night display brightness:"))
+        self.night_brightness_slider = QSlider(Qt.Orientation.Horizontal)
+        self.night_brightness_slider.setRange(5, 100)
+        self.night_brightness_slider.setValue(DEFAULT_NIGHT_BRIGHTNESS)
+        self.night_brightness_value = QLabel()
+        self.night_brightness_slider.valueChanged.connect(self.update_night_brightness_label)
+        brightness_row.addWidget(self.night_brightness_slider, 1)
+        brightness_row.addWidget(self.night_brightness_value)
+        layout.addLayout(brightness_row)
+        hint = QLabel("Dims night text and icons only; monitor brightness stays unchanged.")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        self.update_night_brightness_label()
         self.update_night_fields_enabled()
 
         # Start slideshow
@@ -371,6 +386,7 @@ class MainWindow(QWidget):
             transitions=selected_transitions,
             night_start=night_start,
             night_end=night_end,
+            night_display_brightness=self.night_brightness_slider.value(),
             weather_enabled=weather_enabled,
             weather_api_key=weather_api_key,
             weather_location=weather_location,
@@ -488,6 +504,7 @@ class MainWindow(QWidget):
         night_start = data.get("night_start")
         night_end = data.get("night_end")
 
+        self.night_brightness_slider.setValue(night_brightness(data.get("night_display_brightness", DEFAULT_NIGHT_BRIGHTNESS)))
         self.night_mode_checkbox.setChecked(night_mode_enabled)
 
         def apply_time(edit, value):
@@ -526,6 +543,7 @@ class MainWindow(QWidget):
             "weather_api_key": self.weather_api_key_input.text().strip(),
             "weather_location": self.weather_location_input.text().strip(),
             "weather_units": self.weather_units_input.text().strip() or "metric",
+            "night_display_brightness": self.night_brightness_slider.value(),
             "night_mode_enabled": self.night_mode_checkbox.isChecked(),
             "night_start": self.night_start_edit.time().toString("HH:mm"),
             "night_end": self.night_end_edit.time().toString("HH:mm"),
@@ -594,7 +612,16 @@ class MainWindow(QWidget):
         ):
             widget.setEnabled(False)
 
+    def update_night_brightness_label(self):
+        value = self.night_brightness_slider.value()
+        self.night_brightness_value.setText(f"{value}%")
+        slideshow = getattr(self, "slideshow", None)
+        if slideshow is not None and hasattr(slideshow, "night_display"):
+            slideshow.night_display.set_brightness(value)
+
     def update_night_fields_enabled(self):
         enabled = self.night_mode_checkbox.isChecked()
         self.night_start_edit.setEnabled(enabled)
         self.night_end_edit.setEnabled(enabled)
+        if hasattr(self, "night_brightness_slider"):
+            self.night_brightness_slider.setEnabled(enabled)

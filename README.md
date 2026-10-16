@@ -86,7 +86,15 @@
   <p>
     To schedule overnight blackouts, enable <em>Night Mode Schedule</em> in the GUI and set
     start and end times (24-hour <code>HH:MM</code> format). The slideshow pauses at the
-    start time, switches to a black screen, and resumes automatically at the end time.
+    start time, switches to a separate full-screen night information display, and
+    restores the daytime sidebar and slideshow automatically at the end time.
+    The night display uses almost-black backgrounds, dim warm-gray text, and
+    subdued amber line icons, with the clock/weather above four information tiles.
+    Clock, NWS updates, stale/error status, local solar-date refresh, and idle cursor
+    hiding continue while photos and captions are hidden. Overnight schedules can
+    cross midnight. <code>night_display_brightness</code> (5–100%, default 30%) is
+    saved by the “Night display brightness” slider and affects text/icons only;
+    it never changes monitor or system brightness.
   </p>
 </section>
 

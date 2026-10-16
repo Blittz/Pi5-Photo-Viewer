@@ -17,6 +17,7 @@
     "weather_api_key": "",
     "weather_location": "Medford,OR,US",
     "weather_units": "imperial",
+    "night_display_brightness": 30,
     "night_mode_enabled": true,
     "night_start": "21:00",
     "night_end": "05:30"
