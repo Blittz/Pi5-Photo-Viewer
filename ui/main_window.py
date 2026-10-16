@@ -378,7 +378,12 @@ class MainWindow(QWidget):
             image_paths=images,
         )
         self.auto_start_label.setText("Slideshow started. Auto-start will not run again this launch.")
+        # Size before mapping, then request fullscreen after the first native
+        # window has been created (Qt/XWayland can lose an initial state request).
+        self.slideshow.resize(self.screen().size())
         self.slideshow.showFullScreen()
+        slideshow = self.slideshow
+        QTimer.singleShot(0, lambda: slideshow.showFullScreen() if slideshow.isVisible() else None)
 
     def load_settings(self):
         data = load_json_settings()

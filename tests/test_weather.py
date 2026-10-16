@@ -60,6 +60,15 @@ class WeatherTests(unittest.TestCase):
         for unit,value,expected in [('m_s-1',1,2.2369362921),('mi_h-1',10,10),('kn',10,11.50779448)]:
             self.assertAlmostEqual(weather_client.WeatherClient._quantity({'w':{'value':value,'unitCode':'wmoUnit:'+unit}},'w','speed'), expected)
 
+    def test_feels_like_uses_only_supplied_nws_indices(self):
+        payload=observation()
+        for heat,chill,expected in [(None,None,None),(25,None,77),(None,10,50),(25,10,77)]:
+            payload['properties']['heatIndex']['value']=heat
+            payload['properties']['windChill']['value']=chill
+            result=weather_client.WeatherClient._parse_summary(payload)
+            self.assertEqual(result['feels_like'],expected)
+            self.assertIsNotNone(result['temperature'])
+
     def test_missing_and_invalid_data(self):
         p={'properties': {'timestamp': datetime.now(timezone.utc).isoformat()}}
         s=weather_client.WeatherClient._parse_summary(p)
@@ -103,7 +112,7 @@ class WeatherTests(unittest.TestCase):
             manager._on_weather_success(s)
             v=manager.viewer
             self.assertTrue(v.weather_container.isVisible())
-            self.assertEqual(v.weather_location_label.text(),'Medford Airport')
+            self.assertEqual(v.weather_location_label.text(),'MEDFORD AIRPORT')
             self.assertEqual(v.weather_temperature_label.text(),'73°F')
             self.assertEqual(v.weather_condition_label.text(),'Clear')
             self.assertIn('Observed',v.weather_updated_label.text()); self.assertIn('Fetched',v.weather_updated_label.text())
@@ -124,7 +133,7 @@ class WeatherTests(unittest.TestCase):
             self.assertEqual(manager._solar_date,datetime.now(MEDFORD_TIMEZONE).date())
             self.assertEqual(manager._solar_events,solar_times(manager._solar_date))
             manager._latest_weather_summary=None; manager._weather_last_success=None; manager._on_weather_error('failure')
-            self.assertIn('unavailable',v.weather_temperature_label.text())
+            self.assertEqual(v.weather_temperature_label.text(),'—')
             self.assertIn('STALE',v.weather_updated_label.text()); self.assertTrue(v._sunrise_sunset_text)
             manager.close()
 

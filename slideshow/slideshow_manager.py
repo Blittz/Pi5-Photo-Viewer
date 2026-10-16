@@ -5,6 +5,7 @@ from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
 from PyQt6.QtGui import QImageReader
 from .image_viewer import ImageViewer, SUPPORTED_TRANSITIONS
+from .idle_cursor import IdleCursor
 from utils.weather_client import WeatherClient
 from utils.solar import MEDFORD_TIMEZONE, solar_times
 
@@ -109,6 +110,8 @@ class SlideshowManager(QWidget):
         self.refresh_timer.timeout.connect(self.refresh_images)
 
         # Timer to monitor night schedule
+        self.idle_cursor = IdleCursor(self)
+
         self.night_timer = QTimer(self)
         self.night_timer.timeout.connect(self.evaluate_night_mode)
 
@@ -223,6 +226,7 @@ class SlideshowManager(QWidget):
     def closeEvent(self, event):
         # Stop timers when the slideshow window closes to ensure there are no
         # lingering updates running in the background.
+        self.idle_cursor.stop()
         self.slideshow_timer.stop()
         self.refresh_timer.stop()
         self.night_timer.stop()
@@ -279,7 +283,7 @@ class SlideshowManager(QWidget):
         payload = dict(self._latest_weather_summary or {"city": "Medford Airport"})
         payload.update(self._solar_events)
         text = self._format_weather_text(payload, self._weather_last_success)
-        self.viewer.set_weather_overlay({"text": text, "icon": payload.get("icon")})
+        self.viewer.set_weather_overlay({"text": text, "icon": payload.get("icon"), "summary": payload})
 
     def _weather_status_text(self, payload, now=None):
         now = now or datetime.now(timezone.utc)

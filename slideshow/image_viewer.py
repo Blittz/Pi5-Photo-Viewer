@@ -4,8 +4,6 @@ import random
 import os
 import html
 from datetime import datetime, date
-from dataclasses import asdict, is_dataclass
-from pathlib import Path
 
 from PyQt6.QtCore import (
     Qt,
@@ -14,7 +12,6 @@ from PyQt6.QtCore import (
     QVariantAnimation,
     QEasingCurve,
     QPointF,
-    QUrl,
 )
 from PyQt6.QtGui import (
     QImageReader,
@@ -23,7 +20,6 @@ from PyQt6.QtGui import (
     QPainter,
     QFont,
     QFontMetrics,
-    QFontDatabase,
 )
 from PyQt6.QtWidgets import (
     QGraphicsView,
@@ -31,11 +27,8 @@ from PyQt6.QtWidgets import (
     QGraphicsPixmapItem,
     QSizePolicy,
     QLabel,
-    QWidget,
-    QHBoxLayout,
-    QVBoxLayout,
 )
-from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
+from .quiet_sidebar import QuietSidebar
 
 from PIL import Image, ExifTags
 
@@ -56,27 +49,6 @@ EXIF_TAG_NAME_TO_ID = {name: tag for tag, name in ExifTags.TAGS.items()}
 
 
 class ImageViewer(QGraphicsView):
-    _emoji_font_family = None
-    _WEATHER_EMOJI_SEQUENCES = (
-        "🌬️",
-        "🌬",
-        "🌅",
-        "🌇",
-        "💧",
-        "☀️",
-        "☀",
-        "☁️",
-        "☁",
-        "❄️",
-        "❄",
-        "⛈️",
-        "⛈",
-        "🌧️",
-        "🌧",
-        "🌨️",
-        "🌨",
-    )
-
     def __init__(
         self,
         motion_enabled=True,
@@ -144,208 +116,37 @@ class ImageViewer(QGraphicsView):
         self.incoming_pixmap = QPixmap()
         self.available_transitions = list(SUPPORTED_TRANSITIONS)
 
-        self.metadata_label = QLabel(self)
-        self.metadata_label.setAlignment(
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom
-        )
+        # The reserved margin is outside the graphics viewport: all photo
+        # transforms/transitions are clipped before reaching the stationary panel.
+        self.sidebar = QuietSidebar(self, font_size=self.weather_font_size)
+        self.weather_container = self.sidebar.weather_panel
+        self.weather_location_label = self.sidebar.location_label
+        self.weather_temperature_label = self.sidebar.temperature_label
+        self.weather_condition_label = self.sidebar.condition_label
+        self.weather_feels_like_label = self.sidebar.feels_label
+        self.weather_updated_label = self.sidebar.status_label
+        self.clock_label = self.sidebar.clock_label
+        self.clock_day_label = self.sidebar.day_label
+        self.clock_date_label = self.sidebar.date_label
+        self.metadata_label = QLabel(self.viewport())
+        self.metadata_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.metadata_label.setStyleSheet(
-            "color: white; background-color: rgba(0, 0, 0, 180);"
-            "padding: 6px 14px; border-radius: 12px;"
+            "color: #f3eee5; background-color: rgba(12, 14, 16, 170);"
+            "padding: 7px 16px; border-radius: 5px;"
         )
-        self.metadata_label.setWordWrap(False)
-        self.metadata_label.setVisible(False)
-        self.metadata_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.metadata_label.setTextFormat(Qt.TextFormat.RichText)
-        self.metadata_horizontal_padding = 28  # matches padding: 6px 14px
-
-        self.weather_container = QWidget(self)
-        self.weather_container.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.weather_container.setVisible(False)
-
-        self.weather_layout = QVBoxLayout(self.weather_container)
-        self.weather_layout.setContentsMargins(12, 10, 12, 10)
-        self.weather_layout.setSpacing(6)
-
-        self.weather_location_label = QLabel(self.weather_container)
-        self.weather_location_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
-        )
-        self.weather_location_label.setWordWrap(False)
-        self.weather_location_label.setVisible(False)
-        self.weather_location_label.setTextFormat(Qt.TextFormat.RichText)
-        self.weather_location_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.weather_layout.addWidget(self.weather_location_label)
-
-        self.weather_temperature_layout = QHBoxLayout()
-        self.weather_temperature_layout.setContentsMargins(0, 0, 0, 0)
-        self.weather_temperature_layout.setSpacing(10)
-        self.weather_layout.addLayout(self.weather_temperature_layout)
-
-        self.weather_temperature_label = QLabel(self.weather_container)
-        self.weather_temperature_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
-        self.weather_temperature_label.setWordWrap(False)
-        self.weather_temperature_label.setVisible(False)
-        self.weather_temperature_label.setTextFormat(Qt.TextFormat.RichText)
-        self.weather_temperature_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.weather_temperature_layout.addWidget(self.weather_temperature_label)
-
-        self.weather_icon_label = QLabel(self.weather_container)
-        self.weather_icon_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
-        self.weather_icon_label.setVisible(False)
-        self.weather_icon_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.weather_temperature_layout.addWidget(self.weather_icon_label)
-        self.weather_temperature_layout.addStretch(1)
-
-        self.weather_condition_label = QLabel(self.weather_container)
-        self.weather_condition_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
-        )
-        self.weather_condition_label.setWordWrap(False)
-        self.weather_condition_label.setVisible(False)
-        self.weather_condition_label.setTextFormat(Qt.TextFormat.RichText)
-        self.weather_condition_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.weather_layout.addWidget(self.weather_condition_label)
-
-        self.weather_feels_like_label = QLabel(self.weather_container)
-        self.weather_feels_like_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
-        )
-        self.weather_feels_like_label.setWordWrap(False)
-        self.weather_feels_like_label.setVisible(False)
-        self.weather_feels_like_label.setTextFormat(Qt.TextFormat.RichText)
-        self.weather_feels_like_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.weather_layout.addWidget(self.weather_feels_like_label)
-
-        self.weather_humidity_wind_label = QLabel(self.weather_container)
-        self.weather_humidity_wind_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
-        )
-        self.weather_humidity_wind_label.setWordWrap(False)
-        self.weather_humidity_wind_label.setVisible(False)
-        self.weather_humidity_wind_label.setTextFormat(Qt.TextFormat.RichText)
-        self.weather_humidity_wind_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.weather_layout.addWidget(self.weather_humidity_wind_label)
-
-        self.weather_sun_label = QLabel(self.weather_container)
-        self.weather_sun_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
-        )
-        self.weather_sun_label.setWordWrap(False)
-        self.weather_sun_label.setVisible(False)
-        self.weather_sun_label.setTextFormat(Qt.TextFormat.RichText)
-        self.weather_sun_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.weather_layout.addWidget(self.weather_sun_label)
-
-        self.weather_updated_label = QLabel(self.weather_container)
-        self.weather_updated_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
-        )
-        self.weather_updated_label.setWordWrap(True)
-        self.weather_updated_label.setVisible(False)
-        self.weather_updated_label.setTextFormat(Qt.TextFormat.RichText)
-        self.weather_updated_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.weather_layout.addWidget(self.weather_updated_label)
-
-        self.clock_container = QWidget(self)
-        self.clock_container.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.clock_container.setVisible(True)
-
-        self.clock_layout = QVBoxLayout(self.clock_container)
-        self.clock_layout.setContentsMargins(12, 10, 12, 10)
-        self.clock_layout.setSpacing(6)
-
-        self.clock_label = QLabel(self.clock_container)
-        self.clock_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop
-        )
-        self.clock_label.setWordWrap(False)
-        self.clock_label.setVisible(True)
-        self.clock_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.clock_layout.addWidget(self.clock_label)
-
-        self.clock_day_label = QLabel(self.clock_container)
-        self.clock_day_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop
-        )
-        self.clock_day_label.setWordWrap(False)
-        self.clock_day_label.setVisible(True)
-        self.clock_day_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.clock_layout.addWidget(self.clock_day_label)
-
-        self.clock_date_label = QLabel(self.clock_container)
-        self.clock_date_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop
-        )
-        self.clock_date_label.setWordWrap(False)
-        self.clock_date_label.setVisible(True)
-        self.clock_date_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.clock_layout.addWidget(self.clock_date_label)
-
-        self.clock_sun_label = QLabel(self.clock_container)
-        self.clock_sun_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop
-        )
-        self.clock_sun_label.setWordWrap(False)
-        self.clock_sun_label.setVisible(False)
-        self.clock_sun_label.setTextFormat(Qt.TextFormat.RichText)
-        self.clock_sun_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        self.clock_layout.addWidget(self.clock_sun_label)
-
-        self._apply_weather_stylesheet()
-
-        self.overlay_margin = 20
-
+        self.metadata_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.metadata_label.hide()
+        self.metadata_horizontal_padding = 32
+        self.overlay_margin = 18
         self._photo_folder_text = ""
         self._photo_date_text = ""
         self._weather_text = ""
-        self._weather_icon_key = None
-        self._weather_icon_pixmap = QPixmap()
-        self._weather_icon_size = 0
-        self._icon_cache = {}
-        self._pending_icon_reply = None
-
         self._sunrise_sunset_text = ""
-
-        self._update_weather_icon_size()
-        self._pending_icon_key = None
-        self._network_manager = QNetworkAccessManager(self)
-
         self.clock_timer = QTimer(self)
         self.clock_timer.timeout.connect(self._update_clock_display)
         self.clock_timer.start(1000)
-        self._update_clock_display()
+        self._update_sidebar_geometry()
 
     def show_black_screen(self):
         self.motion_timer.stop()
@@ -360,12 +161,9 @@ class ImageViewer(QGraphicsView):
         self._photo_folder_text = ""
         self._photo_date_text = ""
         self._weather_text = ""
-        self._weather_icon_key = None
         self._sunrise_sunset_text = ""
-        self._cancel_pending_icon_request()
-        self._clear_weather_icon()
         self._update_metadata_label()
-        self._update_weather_display()
+        self.set_weather_overlay(None)
         self._update_clock_display()
 
         self.scene.setSceneRect(QRectF(self.viewport().rect()))
@@ -373,6 +171,9 @@ class ImageViewer(QGraphicsView):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        if not hasattr(self, "sidebar"):
+            return
+        self._update_sidebar_geometry()
         if not self._current_pixmap.isNull():
             self._fit_pixmap()
         self._update_metadata_label()
@@ -807,50 +608,18 @@ class ImageViewer(QGraphicsView):
         self._update_overlay_positions()
 
     def set_weather_font_size(self, font_size):
-        sanitized = self._sanitize_font_size(font_size)
-        if math.isclose(self.weather_font_size, sanitized):
-            return
-        self.weather_font_size = sanitized
-        self._update_weather_icon_size()
-        self._apply_weather_stylesheet()
-        self._update_weather_display()
-        self._update_overlay_positions()
+        self.weather_font_size = self._sanitize_font_size(font_size)
+        self.sidebar.font_size = self.weather_font_size
+        self.sidebar.apply_metrics()
 
-    def _calculate_weather_icon_size(self):
-        point_size = max(1.0, float(self.weather_font_size))
-        try:
-            dpi_x = float(self.logicalDpiX())
-            dpi_y = float(self.logicalDpiY())
-            dpi = max(dpi_x, dpi_y)
-        except Exception:
-            dpi = 96.0
-        if dpi <= 0:
-            dpi = 96.0
-        pixels_per_point = dpi / 72.0
-        return max(8.0, point_size * 3.0 * pixels_per_point)
-
-    def _update_weather_icon_size(self):
-        calculated_size = self._calculate_weather_icon_size()
-        if math.isclose(self._weather_icon_size, calculated_size):
-            return
-        self._weather_icon_size = calculated_size
-
-        if self._weather_icon_key:
-            cached = self._icon_cache.get(self._weather_icon_key)
-            if isinstance(cached, QPixmap) and not cached.isNull():
-                self._apply_weather_icon(cached)
-                return
-
-        if not self._weather_icon_pixmap.isNull():
-            self._apply_weather_icon(self._weather_icon_pixmap)
-        else:
-            target = int(self._weather_icon_size)
-            self.weather_icon_label.setFixedSize(target, target)
+    def _update_sidebar_geometry(self):
+        width = round(self.width() * 0.36)
+        self.setViewportMargins(0, 0, width, 0)
+        self.sidebar.setGeometry(self.width() - width, 0, width, self.height())
+        self.sidebar.raise_()
 
     def _update_overlay_positions(self):
-        self._update_weather_position()
         self._update_metadata_position()
-        self._update_clock_position()
 
     def _calculate_metadata_max_width(self):
         viewport_limit = max(0, self.viewport().width() - self.overlay_margin * 2)
@@ -872,71 +641,36 @@ class ImageViewer(QGraphicsView):
         return transform.mapRect(self.pixmap_item.boundingRect())
 
     def _update_metadata_label(self):
-        folder_text = self._photo_folder_text.strip()
-        date_text = self._photo_date_text.strip()
-
-        max_width = self._calculate_metadata_max_width()
-        available_width = None
-        if max_width > 0:
-            available_width = max(0, max_width - self.metadata_horizontal_padding)
-
-        segments = []
-        if folder_text:
-            display_folder = self._elide_metadata_text(
-                folder_text, self.folder_font_size, available_width
-            )
-            segments.append(
-                "<div style=\"font-size:{:.1f}pt; font-weight:600;\">{}</div>".format(
-                    self.folder_font_size,
-                    html.escape(display_folder),
-                )
-            )
-        if date_text:
-            display_date = self._elide_metadata_text(
-                date_text, self.date_font_size, available_width
-            )
-            segments.append(
-                "<div style=\"font-size:{:.1f}pt;\">{}</div>".format(
-                    self.date_font_size,
-                    html.escape(display_date),
-                )
-            )
-
-        if segments:
-            combined = "".join(segments)
-            self.metadata_label.setText(
-                f"<div style='text-align:center; white-space:nowrap;'>{combined}</div>"
-            )
-            self.metadata_label.setVisible(True)
-            self.metadata_label.raise_()
-        else:
-            self.metadata_label.setText("")
-            self.metadata_label.setVisible(False)
+        folder = self._photo_folder_text.strip()
+        photo_date = self._photo_date_text.strip()
+        if not folder and not photo_date:
+            self.metadata_label.clear()
+            self.metadata_label.hide()
+            return
+        scale = max(0.6, self.height() / 1080)
+        folder_size = max(10, self.folder_font_size * .5 * scale)
+        date_size = max(10, self.date_font_size * .5 * scale)
+        available = max(20, self.viewport().width() - 2*self.overlay_margin - self.metadata_horizontal_padding)
+        font = QFont(self.metadata_label.font()); font.setPointSizeF(date_size)
+        date_width = QFontMetrics(font).horizontalAdvance(photo_date) + 35 if photo_date else 0
+        display_folder = self._elide_metadata_text(folder, folder_size, max(20, available-date_width))
+        parts = []
+        if folder:
+            parts.append(f'<span style="font-size:{folder_size:.1f}pt; font-weight:500">{html.escape(display_folder)}</span>')
+        if photo_date:
+            parts.append(f'<span style="font-size:{date_size:.1f}pt; color:#d1cec8">{html.escape(photo_date)}</span>')
+        self.metadata_label.setText(' &nbsp; · &nbsp; '.join(parts))
+        self.metadata_label.show()
+        self._update_metadata_position()
 
     def _update_metadata_position(self):
         if not self.metadata_label.isVisible():
             return
-
-        max_width = self._calculate_metadata_max_width()
-        if max_width <= 0:
-            self.metadata_label.setVisible(False)
-            return
-
-        self.metadata_label.setMaximumWidth(max_width)
+        self.metadata_label.setMaximumWidth(max(1, self.viewport().width()-2*self.overlay_margin))
         self.metadata_label.adjustSize()
-
-        label_width = self.metadata_label.width()
-        label_height = self.metadata_label.height()
-
-        x = (self.viewport().width() - label_width) / 2
-        min_x = self.overlay_margin
-        max_x = self.viewport().width() - label_width - self.overlay_margin
-        if max_x < min_x:
-            x = min_x
-        else:
-            x = max(min_x, min(x, max_x))
-        y = self.viewport().height() - label_height - self.overlay_margin
-        self.metadata_label.move(int(x), int(y))
+        self.metadata_label.move(max(0,(self.viewport().width()-self.metadata_label.width())//2),
+                                 max(0,self.viewport().height()-self.metadata_label.height()-self.overlay_margin))
+        self.metadata_label.raise_()
 
     def _set_photo_metadata(self, image_path):
         folder_name = os.path.basename(os.path.dirname(image_path))
@@ -1047,483 +781,15 @@ class ImageViewer(QGraphicsView):
         return metrics.elidedText(text, Qt.TextElideMode.ElideMiddle, int(max_width))
 
     def set_weather_overlay(self, weather):
-        text, icon_hint = self._normalize_weather_overlay(weather)
-        icon_key, icon_url = self._resolve_icon_sources(icon_hint)
-
-        text_changed = text != self._weather_text
-        icon_changed = icon_key != self._weather_icon_key
-
-        self._weather_text = text
-
-        if icon_changed:
-            self._set_weather_icon(icon_key, icon_url)
-        elif text_changed:
-            self._update_weather_display()
-
-    def _update_weather_display(self):
-        display_text = self._weather_text or ""
-        if display_text:
-            raw_lines = display_text.split("\n")
-        else:
-            raw_lines = []
-
-        while len(raw_lines) < 7:
-            raw_lines.append("")
-
-        location_text = raw_lines[0].strip()
-        temperature_text = raw_lines[1].strip()
-        summary_text = raw_lines[2].strip()
-        feels_like_text = raw_lines[3].strip()
-        humidity_wind_text = raw_lines[4].strip()
-        sun_text = raw_lines[5].strip()
-        updated_text = raw_lines[6].strip()
-
-        self._sunrise_sunset_text = sun_text
-
-        has_icon = not self._weather_icon_pixmap.isNull()
-        if has_icon:
-            self.weather_icon_label.setPixmap(self._weather_icon_pixmap)
-        else:
-            self.weather_icon_label.clear()
-        self.weather_icon_label.setVisible(has_icon)
-
-        def apply_html(label, text):
-            if text:
-                label.setText(self._render_weather_body_html(text))
-                label.setVisible(True)
-            else:
-                label.clear()
-                label.setVisible(False)
-
-        apply_html(self.weather_location_label, location_text)
-        apply_html(self.weather_temperature_label, temperature_text)
-        apply_html(self.weather_condition_label, summary_text)
-        apply_html(self.weather_feels_like_label, feels_like_text)
-        apply_html(self.weather_humidity_wind_label, humidity_wind_text)
-        self.weather_sun_label.clear()
-        self.weather_sun_label.setVisible(False)
-        apply_html(self.weather_updated_label, updated_text)
-
-        # Child isVisible() is false while the parent is hidden, even with text.
-        should_show = any((location_text, temperature_text, summary_text,
-                           feels_like_text, humidity_wind_text, updated_text)) or has_icon
-        self.weather_container.setVisible(should_show)
-        if should_show:
-            self.weather_container.raise_()
-
-        self._update_overlay_positions()
-        self._update_clock_display()
-
-    def _apply_weather_stylesheet(self):
-        emoji_font_family = self._ensure_weather_icon_font()
-
-        self.weather_container.setStyleSheet(
-            "background-color: rgba(0, 0, 0, 180); border-radius: 12px;"
-        )
-        self.clock_container.setStyleSheet(
-            "background-color: rgba(0, 0, 0, 180); border-radius: 12px;"
-        )
-        base_style = (
-            "background-color: transparent; "
-            f"color: white; font-size: {self.weather_font_size:.1f}pt;"
-        )
-        day_style = (
-            "background-color: transparent; "
-            f"color: white; font-size: {self.weather_font_size * 2.0:.1f}pt;"
-            " font-weight: 600;"
-        )
-        emphasized_style = base_style + " font-weight: 600;"
-        temperature_style = (
-            "background-color: transparent; "
-            f"color: white; font-size: {self.weather_font_size * 3.0:.1f}pt;"
-            " font-weight: 600;"
-        )
-        updated_style = (
-            "background-color: transparent; "
-            f"color: white; font-size: {max(1.0, self.weather_font_size * 0.5):.1f}pt;"
-        )
-
-        def compose_font_family_css(base_family):
-            if base_family:
-                return f" font-family: \"{base_family}\", sans-serif;"
-            return " font-family: sans-serif;"
-
-        location_font_css = compose_font_family_css(
-            self.weather_location_label.font().family()
-        )
-        temperature_font_css = compose_font_family_css(
-            self.weather_temperature_label.font().family()
-        )
-        condition_font_css = compose_font_family_css(
-            self.weather_condition_label.font().family()
-        )
-        feels_like_font_css = compose_font_family_css(
-            self.weather_feels_like_label.font().family()
-        )
-        humidity_font_css = compose_font_family_css(
-            self.weather_humidity_wind_label.font().family()
-        )
-        sun_font_css = compose_font_family_css(self.weather_sun_label.font().family())
-        updated_font_css = compose_font_family_css(
-            self.weather_updated_label.font().family()
-        )
-        clock_time_font_css = compose_font_family_css(self.clock_label.font().family())
-        clock_day_font_css = compose_font_family_css(
-            self.clock_day_label.font().family()
-        )
-        clock_date_font_css = compose_font_family_css(
-            self.clock_date_label.font().family()
-        )
-        clock_sun_font_css = compose_font_family_css(
-            self.clock_sun_label.font().family()
-        )
-
-        self.weather_location_label.setStyleSheet(emphasized_style + location_font_css)
-        self.weather_temperature_label.setStyleSheet(
-            temperature_style + temperature_font_css
-        )
-        self.weather_condition_label.setStyleSheet(base_style + condition_font_css)
-        self.weather_feels_like_label.setStyleSheet(base_style + feels_like_font_css)
-        self.weather_humidity_wind_label.setStyleSheet(base_style + humidity_font_css)
-        self.weather_sun_label.setStyleSheet(base_style + sun_font_css)
-        self.weather_updated_label.setStyleSheet(updated_style + updated_font_css)
-
-        self.weather_icon_label.setStyleSheet(
-            "background: transparent; "
-            f"font-family: \"{emoji_font_family}\", sans-serif;"
-        )
-        self.weather_icon_label.setFont(QFont(emoji_font_family))
-
-        self.clock_label.setStyleSheet(temperature_style + clock_time_font_css)
-        self.clock_day_label.setStyleSheet(day_style + clock_day_font_css)
-        self.clock_date_label.setStyleSheet(base_style + clock_date_font_css)
-        self.clock_sun_label.setStyleSheet(base_style + clock_sun_font_css)
-
-    def _render_weather_body_html(self, body_text):
-        if not body_text:
-            return ""
-
-        emoji_font_family = self._ensure_weather_icon_font()
-        escaped = html.escape(body_text)
-        for count in (3, 2):
-            escaped = escaped.replace(" " * count, "&nbsp;" * count)
-        for sequence in sorted(self._WEATHER_EMOJI_SEQUENCES, key=len, reverse=True):
-            if not sequence:
-                continue
-            escaped_sequence = html.escape(sequence)
-            if escaped_sequence not in escaped:
-                continue
-            replacement = (
-                f"<span style=\"font-family: '{emoji_font_family}', sans-serif;\">"
-                f"{escaped_sequence}</span>"
-            )
-            escaped = escaped.replace(escaped_sequence, replacement)
-        return escaped.replace("\n", "<br/>")
-
-    @classmethod
-    def _ensure_weather_icon_font(cls):
-        if cls._emoji_font_family:
-            return cls._emoji_font_family
-
-        emoji_font_paths = (
-            Path("/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"),
-            Path("/usr/share/fonts/opentype/noto/NotoColorEmoji.ttf"),
-        )
-
-        for path in emoji_font_paths:
-            if not path.exists():
-                continue
-            font_id = QFontDatabase.addApplicationFont(str(path))
-            if font_id == -1:
-                continue
-            families = QFontDatabase.applicationFontFamilies(font_id)
-            if families:
-                cls._emoji_font_family = families[0]
-                break
-
-        if not cls._emoji_font_family:
-            cls._emoji_font_family = "Noto Color Emoji"
-
-        return cls._emoji_font_family
-
-    def _update_weather_position(self):
-        if not self.weather_container.isVisible():
-            return
-
-        max_width = max(0, self.viewport().width() - self.overlay_margin * 2)
-        if max_width <= 0:
-            self.weather_container.setVisible(False)
-            return
-
-        margins = self.weather_layout.contentsMargins()
-        content_width = max_width - margins.left() - margins.right()
-        if content_width < 0:
-            content_width = 0
-
-        for label in (
-            self.weather_location_label,
-            self.weather_temperature_label,
-            self.weather_condition_label,
-            self.weather_feels_like_label,
-            self.weather_humidity_wind_label,
-            self.weather_sun_label,
-            self.weather_updated_label,
-        ):
-            if label.isVisible():
-                label.setMaximumWidth(content_width or max_width)
-            else:
-                label.setMaximumWidth(0)
-
-        self.weather_container.setMaximumWidth(max_width)
-        self.weather_container.adjustSize()
-
-        x = self.overlay_margin
-        y = self.overlay_margin
-        self.weather_container.move(int(x), int(y))
-
-    def _update_clock_position(self):
-        if not self.clock_container.isVisible():
-            return
-
-        max_width = max(0, self.viewport().width() - self.overlay_margin * 2)
-        if max_width <= 0:
-            self.clock_container.setVisible(False)
-            return
-
-        margins = self.clock_layout.contentsMargins()
-        content_width = max_width - margins.left() - margins.right()
-        if content_width < 0:
-            content_width = 0
-
-        for label in (
-            self.clock_label,
-            self.clock_day_label,
-            self.clock_date_label,
-            self.clock_sun_label,
-        ):
-            if label.isVisible():
-                label.setMaximumWidth(content_width or max_width)
-            else:
-                label.setMaximumWidth(0)
-
-        self.clock_container.setMaximumWidth(max_width)
-        self.clock_container.adjustSize()
-
-        x = self.viewport().width() - self.clock_container.width() - self.overlay_margin
-        if x < self.overlay_margin:
-            x = self.overlay_margin
-        y = self.overlay_margin
-        self.clock_container.move(int(x), int(y))
-
-    @staticmethod
-    def _format_day_with_suffix(day_value: int) -> str:
-        if 10 <= day_value % 100 <= 20:
-            suffix = "th"
-        else:
-            suffix = {1: "st", 2: "nd", 3: "rd"}.get(day_value % 10, "th")
-        return f"{day_value}{suffix}"
+        weather = weather if isinstance(weather, dict) else {"text": weather or ""}
+        self._weather_text = str(weather.get("text") or "")
+        lines = (self._weather_text.split("\n") + [""] * 7)[:7]
+        self._sunrise_sunset_text = lines[5]
+        self.sidebar.set_weather(lines, weather.get("summary"), weather.get("icon"))
+        self.sidebar.set_weather_enabled(bool(self._weather_text))
 
     def _update_clock_display(self):
-        now = datetime.now()
-        time_text = now.strftime("%I:%M %p").lstrip("0")
-        if not time_text:
-            time_text = now.strftime("%H:%M")
-
-        self.clock_label.setText(time_text)
-        self.clock_label.setVisible(True)
-
-        day_text = now.strftime("%A")
-        self.clock_day_label.setText(day_text)
-        self.clock_day_label.setVisible(True)
-
-        ordinal_day = self._format_day_with_suffix(now.day)
-        date_text = f"{now.strftime('%B')} {ordinal_day}, {now.year}"
-        self.clock_date_label.setText(date_text)
-        self.clock_date_label.setVisible(True)
-
-        sun_text = self._sunrise_sunset_text.strip()
-        if sun_text:
-            self.clock_sun_label.setText(self._render_weather_body_html(sun_text))
-            self.clock_sun_label.setVisible(True)
-        else:
-            self.clock_sun_label.clear()
-            self.clock_sun_label.setVisible(False)
-
-        self.clock_container.setVisible(True)
-        self.clock_container.raise_()
-        self._update_clock_position()
-
-    def _normalize_weather_overlay(self, weather):
-        if weather is None:
-            return "", None
-        if isinstance(weather, str):
-            return weather.strip(), None
-        if is_dataclass(weather):
-            weather = asdict(weather)
-
-        if isinstance(weather, dict):
-            icon_hint = None
-            if "text" in weather:
-                text_value = str(weather.get("text") or "").strip()
-                icon_hint = (
-                    weather.get("icon")
-                    or weather.get("icon_code")
-                    or weather.get("icon_url")
-                )
-            else:
-                text_value = ImageViewer._normalize_weather_text(weather)
-                icon_hint = weather.get("icon")
-
-            if isinstance(icon_hint, dict):
-                icon_hint = icon_hint.get("url") or icon_hint.get("code")
-
-            if not text_value:
-                text_value = ImageViewer._normalize_weather_text(weather)
-
-            icon_hint = str(icon_hint).strip() if isinstance(icon_hint, str) else None
-            if icon_hint == "":
-                icon_hint = None
-
-            return text_value, icon_hint
-
-        return str(weather).strip(), None
-
-    @staticmethod
-    def _normalize_weather_text(weather):
-        if weather is None:
-            return ""
-        if isinstance(weather, str):
-            return weather.strip()
-        if is_dataclass(weather):
-            weather = asdict(weather)
-        if isinstance(weather, dict):
-            condition = weather.get("condition")
-            temperature = weather.get("temperature")
-            extra = weather.get("extra")
-            parts = []
-            if temperature is not None:
-                parts.append(str(temperature))
-            if condition:
-                parts.append(str(condition))
-            if extra:
-                parts.append(str(extra))
-            return " – ".join(part for part in parts if part).strip()
-        return str(weather).strip()
-
-    def _resolve_icon_sources(self, icon_hint):
-        if not icon_hint:
-            return None, None
-
-        hint = icon_hint.strip()
-        if not hint:
-            return None, None
-
-        if hint.startswith("http://") or hint.startswith("https://"):
-            return hint, hint
-
-        return hint, f"https://openweathermap.org/img/wn/{hint}@2x.png"
-
-    def _set_weather_icon(self, icon_key, icon_url):
-        self._cancel_pending_icon_request()
-
-        if not icon_key or not icon_url:
-            self._weather_icon_key = None
-            self._clear_weather_icon()
-            self._update_weather_display()
-            return
-
-        self._weather_icon_key = icon_key
-
-        cached = self._icon_cache.get(icon_key)
-        if isinstance(cached, QPixmap) and not cached.isNull():
-            self._apply_weather_icon(cached)
-            self._update_weather_display()
-            return
-
-        url = QUrl(icon_url)
-        if not url.isValid():
-            self._weather_icon_key = None
-            self._clear_weather_icon()
-            self._update_weather_display()
-            return
-
-        request = QNetworkRequest(url)
-        self._pending_icon_reply = self._network_manager.get(request)
-        self._pending_icon_key = icon_key
-        self._pending_icon_reply.finished.connect(self._on_icon_download_finished)  # type: ignore[arg-type]
-        self._update_weather_display()
-
-    def _apply_weather_icon(self, pixmap):
-        if pixmap.isNull():
-            self._clear_weather_icon()
-            return
-
-        target_size = int(self._weather_icon_size)
-        scaled = pixmap.scaled(
-            target_size,
-            target_size,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self._weather_icon_pixmap = scaled
-        self.weather_icon_label.setPixmap(scaled)
-        self.weather_icon_label.setFixedSize(target_size, target_size)
-        self.weather_icon_label.setVisible(True)
-
-    def _clear_weather_icon(self):
-        self._weather_icon_pixmap = QPixmap()
-        self.weather_icon_label.clear()
-        self.weather_icon_label.setVisible(False)
-
-    def _cancel_pending_icon_request(self):
-        if self._pending_icon_reply is None:
-            return
-        try:
-            self._pending_icon_reply.finished.disconnect(self._on_icon_download_finished)  # type: ignore[arg-type]
-        except TypeError:
-            pass
-        self._pending_icon_reply.abort()
-        self._pending_icon_reply.deleteLater()
-        self._pending_icon_reply = None
-        self._pending_icon_key = None
-
-    def _on_icon_download_finished(self):
-        reply = self.sender()
-        if not isinstance(reply, QNetworkReply):
-            return
-
-        if reply is not self._pending_icon_reply:
-            reply.deleteLater()
-            return
-
-        icon_key = self._pending_icon_key
-        self._pending_icon_reply = None
-        self._pending_icon_key = None
-
-        if reply.error() != QNetworkReply.NetworkError.NoError:
-            reply.deleteLater()
-            if icon_key == self._weather_icon_key:
-                self._weather_icon_key = None
-                self._clear_weather_icon()
-                self._update_weather_display()
-            return
-
-        data = bytes(reply.readAll())
-        reply.deleteLater()
-
-        pixmap = QPixmap()
-        if not pixmap.loadFromData(data):
-            if icon_key == self._weather_icon_key:
-                self._weather_icon_key = None
-                self._clear_weather_icon()
-                self._update_weather_display()
-            return
-
-        self._icon_cache[icon_key] = pixmap
-
-        if icon_key == self._weather_icon_key:
-            self._apply_weather_icon(pixmap)
-            self._update_weather_display()
+        self.sidebar.update_clock()
 
     @staticmethod
     def _sanitize_font_size(font_size):

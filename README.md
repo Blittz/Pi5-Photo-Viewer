@@ -54,6 +54,19 @@
     No API key is needed; saved OpenWeather settings remain stored but unused.
   </p>
   <p>
+    The experimental Quiet sidebar reserves 36% of the display on the right for a
+    stationary clock, date, weather, and solar times. Photos fit the remaining area
+    without stretching; motion and transitions are clipped to that area. Weather
+    icons are drawn locally as scalable line art, including day/night and unknown
+    conditions, with no weather-image downloads. The folder/date caption stays at
+    the bottom of the photo area. Existing font controls scale the sidebar and
+    caption; long weather text wraps. The slideshow cursor hides after three seconds
+    without activity and reappears immediately on movement or input, including in
+    nighttime mode. Settings retain their normal cursor. Very small windows can scroll the sidebar
+    rather than hiding essential readings. Observation/fetch times and stale or
+    failed-update indicators remain visible in the information group.
+  </p>
+  <p>
     Requests time out after 20 seconds. Successful requests refresh every five minutes;
     failures retain the last reading, mark it STALE, and retry after 10, 20, 40, then
     60 minutes. Success resets this interval. Observations older than 90 minutes are
