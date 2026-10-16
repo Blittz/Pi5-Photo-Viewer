@@ -91,6 +91,7 @@ class NightDisplay(QuietSidebar):
         self.footer = QVBoxLayout()
         self.footer.addWidget(self.source_label)
         self.footer.addWidget(self.status_label)
+        self.footer.addWidget(self.health_notice)
         self.layout.addLayout(self.footer)
         self._night_ready = True
         self.apply_metrics()
@@ -129,6 +130,7 @@ class NightDisplay(QuietSidebar):
             icon.ink = self.amber
             icon.background = NIGHT_BACKGROUND
             icon.update()
+        self.health_notice.set_health(self.health_notice.issues, self.brightness)
         for divider in self.dividers:
             divider.setStyleSheet(f'background:{dim("#484039")};')
 
@@ -195,6 +197,7 @@ class NightDisplay(QuietSidebar):
             cell.setSpacing(round(20 * scale))
         font(self.source_label, 21)
         font(self.status_label, 21)
+        self.health_notice.set_metrics(21*scale, width - 2*margin)
         for label, available in [(self.date_label, panel_width), (self.condition_label, panel_width),
                                  (self.feels_label, panel_width), (self.status_label, width - 2 * margin),
                                  (self.humidity_label, tile_width), (self.wind_label, tile_width)]:

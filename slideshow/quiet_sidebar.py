@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QScrollArea, QSizePolicy,
 )
 from utils.solar import MEDFORD_TIMEZONE
+from .health_indicator import HealthNotice
 
 PRIMARY = '#f3eee5'
 SECONDARY = '#b8b6b1'
@@ -194,6 +195,8 @@ class QuietSidebar(QScrollArea):
         self.source_label=label('NWS · KMFR',muted=True)
         self.status_label=label('Observation unavailable',muted=True,wrap=True)
         self.layout.addWidget(self.source_label); self.layout.addWidget(self.status_label)
+        self.health_notice = HealthNotice(self.content)
+        self.layout.addWidget(self.health_notice)
         self.layout.addStretch(1)
         self._summary={}; self._weather_lines=['']*7
         self.update_clock(); self.apply_metrics()
@@ -233,6 +236,10 @@ class QuietSidebar(QScrollArea):
         self.weather_panel.setVisible(True)
         self.apply_metrics()
 
+    def set_health_issues(self, issues):
+        self.health_notice.set_health(issues, getattr(self, "brightness", None))
+        self.apply_metrics()
+
     def set_weather_enabled(self, enabled):
         for widget in (self.weather_panel, self.source_label, self.status_label,
                        *self.solar_icons, *self.solar_titles, *self.solar_labels,
@@ -257,7 +264,8 @@ class QuietSidebar(QScrollArea):
     def _set_metrics(self,scale):
         self.scale=scale
         margin=round(46*scale); gap=max(5,round(12*scale))
-        self.layout.setContentsMargins(margin,round(45*scale),margin,round(30*scale)); self.layout.setSpacing(gap)
+        bottom = 8 if self.health_notice.issues else 30
+        self.layout.setContentsMargins(margin,round(45*scale),margin,round(bottom*scale)); self.layout.setSpacing(gap)
         self.weather_layout.setSpacing(round(22*scale)); self.grid.setHorizontalSpacing(round(24*scale)); self.grid.setVerticalSpacing(round(10*scale))
         self.time_row.setSpacing(round(12*scale)); self.solar_row.setSpacing(round(30*scale))
         def font(label,pixels,weight=QFont.Weight.Normal):
@@ -304,6 +312,7 @@ class QuietSidebar(QScrollArea):
         wrap_height(self.condition_label,column)
         wrap_height(self.feels_label,column)
         available=self.viewport().width()-2*margin
+        self.health_notice.set_metrics(14*scale, available)
         wrap_height(self.date_label,available)
         wrap_height(self.status_label,available)
         detail_column=(available-round(36*scale)-2*round(12*scale))/2

@@ -95,7 +95,7 @@ class IdleCursor(QObject):
                 elif kind in (QEvent.Type.Hide, QEvent.Type.Close):
                     self.stop()
                     self._remove_app_filter()
-            if kind in (QEvent.Type.MouseMove, QEvent.Type.Enter,
+            if kind in (QEvent.Type.MouseMove,
                         QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease,
                         QEvent.Type.Wheel, QEvent.Type.KeyPress, QEvent.Type.TouchBegin):
                 self.show_cursor()

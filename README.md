@@ -84,6 +84,23 @@
     are required for the calculations.
   </p>
   <p>
+    A quiet health indicator stays invisible while checks are healthy. Confirmed
+    faults add a static thin red outline around the entire slideshow window and a
+    short warning below the observation information. Night mode dims both using
+    the saved night display brightness. Recovery clears the indicator automatically.
+    Read-only worker processes check the expected CIFS mount at
+    <code>~/server/Shared</code>, readability of selected folders on that mount,
+    and the system service <code>discord-bot.service</code> every 30 seconds.
+    Empty folders and a lack of new photos are healthy. Each system probe is
+    bounded to six seconds, overlapping probes are prevented, and two consecutive
+    failed samples confirm a warning. Service status does not establish a working
+    Discord connection; the viewer never contacts Discord or restarts services.
+    Weather health uses the existing request-error and 90-minute observation-age
+    rules, with a 90-second initial-data grace period and the same two-sample
+    debounce. No additional weather requests are made. Only health transitions
+    are logged, without credentials, paths, or message contents.
+  </p>
+  <p>
     To schedule overnight blackouts, enable <em>Night Mode Schedule</em> in the GUI and set
     start and end times (24-hour <code>HH:MM</code> format). The slideshow pauses at the
     start time, switches to a separate full-screen night information display, and

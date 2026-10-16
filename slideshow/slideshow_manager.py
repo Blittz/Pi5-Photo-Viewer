@@ -6,6 +6,8 @@ from PyQt6.QtWidgets import QWidget, QStackedLayout
 from PyQt6.QtGui import QImageReader
 from .image_viewer import ImageViewer, SUPPORTED_TRANSITIONS
 from .idle_cursor import IdleCursor
+from .health_indicator import HealthEdge
+from utils.health_monitor import HealthMonitor
 from .night_display import NightDisplay, DEFAULT_NIGHT_BRIGHTNESS
 from utils.weather_client import WeatherClient
 from utils.solar import MEDFORD_TIMEZONE, solar_times
@@ -103,6 +105,8 @@ class SlideshowManager(QWidget):
         layout.addWidget(self.night_display)
         self.display_stack = layout
         self.setLayout(layout)
+        self.health_edge = HealthEdge(self)
+        self.health_edge.setGeometry(self.rect())
 
         # Enable the slideshow window to receive keyboard focus so it can
         # react to shortcut keys such as Escape and F11.
@@ -150,6 +154,36 @@ class SlideshowManager(QWidget):
             )
         else:
             self._refresh_weather_overlay()
+
+        self.health_monitor = HealthMonitor(self.folders, self._health_weather_check, self)
+        self.health_monitor.issuesChanged.connect(self._apply_health_issues)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "health_edge"):
+            self.health_edge.setGeometry(self.rect())
+            self.health_edge.raise_()
+
+    def _apply_health_issues(self, issues):
+        self.viewer.sidebar.set_health_issues(issues)
+        self.night_display.set_health_issues(issues)
+        brightness = self.night_display.brightness if self.blackout_active else None
+        self.health_edge.set_health(issues, brightness)
+
+    def _refresh_health_indicator(self):
+        if hasattr(self, "health_monitor"):
+            self._apply_health_issues(self.health_monitor.state.messages())
+
+    def _health_weather_check(self, startup_age):
+        if not self.weather_enabled:
+            return True, ""
+        if not self._latest_weather_summary:
+            if self._weather_error or startup_age >= 90:
+                return False, "Weather unavailable"
+            return None, ""
+        if self._weather_is_stale(self._latest_weather_summary):
+            return False, "Weather stale"
+        return True, ""
 
     def load_images(self):
         self.images = get_all_images_from_folders(self.folders)
@@ -241,6 +275,7 @@ class SlideshowManager(QWidget):
     def closeEvent(self, event):
         # Stop timers when the slideshow window closes to ensure there are no
         # lingering updates running in the background.
+        self.health_monitor.stop()
         self.idle_cursor.stop()
         self.slideshow_timer.stop()
         self.refresh_timer.stop()
@@ -303,6 +338,17 @@ class SlideshowManager(QWidget):
             lines[2] = "Weather disabled"
             lines[6] = "Local solar times · America/Los_Angeles"
         self.night_display.set_weather(lines, payload, payload.get("icon"))
+        # Let wrapped labels settle before measuring the optional warning row.
+        # This also removes a startup scrollbar after the first weather response.
+        QTimer.singleShot(0, self._refresh_health_indicator)
+
+    def _weather_is_stale(self, payload, now=None):
+        now = now or datetime.now(timezone.utc)
+        try:
+            age = (now - datetime.fromisoformat(payload.get("observed_at"))).total_seconds()
+        except (ValueError, TypeError):
+            return True
+        return bool(self._weather_error) or age > 90 * 60 or age < -5 * 60
 
     def _weather_status_text(self, payload, now=None):
         now = now or datetime.now(timezone.utc)
@@ -312,7 +358,7 @@ class SlideshowManager(QWidget):
             age = (now - observation).total_seconds()
         except (ValueError, TypeError):
             observation, age = None, None
-        stale = bool(self._weather_error) or age is None or age > 90 * 60 or age < -5 * 60
+        stale = self._weather_is_stale(payload, now)
         status = "STALE — " if stale else ""
         if observation is not None:
             status += "Observed " + observation.astimezone(MEDFORD_TIMEZONE).strftime("%b %d %I:%M %p %Z")
@@ -545,12 +591,16 @@ class SlideshowManager(QWidget):
         self.viewer.show_black_screen()
         self.display_stack.setCurrentWidget(self.night_display)
         self._refresh_weather_overlay()
+        if hasattr(self, "health_monitor"):
+            self._apply_health_issues(self.health_monitor.state.messages())
 
     def _exit_blackout_state(self):
         if not self.blackout_active:
             return
         self.blackout_active = False
         self.display_stack.setCurrentWidget(self.viewer)
+        if hasattr(self, "health_monitor"):
+            self._apply_health_issues(self.health_monitor.state.messages())
         if self.images:
             self.show_image(self.current_index)
         self.slideshow_timer.start(self.duration * 1000)
