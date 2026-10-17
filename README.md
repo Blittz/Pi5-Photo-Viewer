@@ -170,3 +170,11 @@
     Released under the MIT License — see <a href="LICENSE">LICENSE</a> for details.
   </p>
 </section>
+
+
+Discord event titles in the sidebar, night layout, and daytime countdown caption
+include the server's display name in parentheses. Display spelling comes from the
+shared feed, independent of photo folder names; missing names leave the title
+without a suffix. Event selection, freshness, expiration, and countdown rules are
+unchanged. Photo folder selection is recursive, so selecting the Discord root also
+includes nested server/channel folders.

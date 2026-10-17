@@ -11,7 +11,7 @@ from PyQt6.QtCore import Qt,QEvent,QPointF
 from PyQt6.QtGui import QFontMetrics,QMouseEvent,QCursor
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
-from utils.scheduled_events import validate_snapshot,event_view,read_snapshot,STALE_AFTER
+from utils.scheduled_events import validate_snapshot,event_view,read_snapshot,STALE_AFTER,event_title
 from utils.event_client import EventClient
 from slideshow.slideshow_manager import SlideshowManager
 from slideshow.health_indicator import event_color,warning_color
@@ -44,7 +44,20 @@ class EventModelTests(unittest.TestCase):
         data['events'].append(event('12',1,server='2'))
         view=self.view(data)
         self.assertIn('Second server',view['detail']);self.assertIn('1h',view['detail'])
-        data['events'].pop();self.assertEqual(self.view(data)['title'],'Community art night')
+        data['events'].pop();self.assertEqual(self.view(data)['title'],'Community art night (Example server)')
+
+    def test_title_server_display_name_and_missing_name(self):
+        self.assertEqual(event_title('D&D Friday Session','Dnd 2024'), 'D&D Friday Session (Dnd 2024)')
+        self.assertEqual(event_title('Session','𝒟&𝒟: 照片'), 'Session (𝒟&𝒟: 照片)')
+        for name in (None,'','   '):self.assertEqual(event_title('Session',name),'Session')
+        data=snapshot();data['servers'][0]['name']='Dnd 2024'
+        self.assertEqual(self.view(data)['title'],'Example adventure session (Dnd 2024)')
+        self.assertEqual(self.view(data,failed=True)['title'],'Example adventure session (Dnd 2024)')
+        for name in (None, '', '   '):
+            data['servers'][0]['name']=name
+            self.assertEqual(self.view(data)['title'],'Example adventure session')
+        data['servers'][0].pop('name')
+        self.assertEqual(self.view(data)['title'],'Example adventure session')
 
     def test_24_hour_boundary_starting_grace_and_no_stuck_blue(self):
         for seconds,blue in [(86401,False),(86400,True),(1,True),(0,False),(-299,False)]:
@@ -127,6 +140,10 @@ class EventQtTests(unittest.TestCase):
         now=datetime.now(timezone.utc);data=snapshot(now=now);data['events'][0]['start_at']=(now+timedelta(hours=2)).isoformat();data['events'][0]['end_at']=None
         manager.event_client.snapshot=validate_snapshot(data);manager._refresh_event_view();APP.processEvents()
         self.assertEqual(manager.health_edge.mode,'event')
+        expected = 'Example adventure session (Example server)'
+        self.assertEqual(manager.viewer.sidebar.event_panel.title.text(), expected)
+        self.assertEqual(manager.night_display.event_panel.title.text(), expected)
+        self.assertEqual(manager.viewer.event_caption.title.text(), expected)
         for _ in range(2):manager.health_monitor.record('bot',False,'Photo bot service stopped')
         self.assertEqual(manager.health_edge.mode,'health')
         self.assertTrue(manager.viewer.sidebar.event_panel.isVisible())

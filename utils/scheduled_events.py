@@ -47,7 +47,8 @@ def validate_snapshot(data):
         if sid in names or type(server.get('refresh_ok')) is not bool:raise ValueError('Invalid server')
         if server.get('last_successful_refresh') is not None:instant(server['last_successful_refresh'])
         if server['refresh_ok'] and server.get('last_successful_refresh') is None:raise ValueError('Missing refresh time')
-        names[sid]=text(server['name'])
+        name=server.get('name')
+        names[sid]=text(name) if isinstance(name,str) and name.strip() else ''
     if data['refresh_ok'] and (not names or not all(s['refresh_ok'] for s in servers) or not data.get('last_successful_refresh')):
         raise ValueError('Incomplete fresh snapshot')
     unique=set();clean=[]
@@ -90,6 +91,11 @@ def countdown(seconds):
     return f'Starts in {days}d'+(f' {hours}h' if hours else '')
 
 
+def event_title(title, server_name=None):
+    name = server_name.strip() if isinstance(server_name, str) else ''
+    return f'{title} ({name})' if name else title
+
+
 def event_view(snapshot,read_failed=False,now=None):
     now=now or datetime.now(timezone.utc)
     base={'heading':'NEXT SESSION','title':'Event data unavailable','when':'',
@@ -100,7 +106,7 @@ def event_view(snapshot,read_failed=False,now=None):
         age=(now-refreshed).total_seconds()
     except (ValueError,TypeError):refreshed=None;age=None
     stale=read_failed or not snapshot['refresh_ok'] or age is None or age>STALE_AFTER or age < -300
-    names={s['id']:s['name'] for s in snapshot['servers']}
+    names={s['id']:s.get('name') or '' for s in snapshot['servers']}
     future=[];current=[]
     for event in snapshot['events']:
         start=instant(event['start_at']);end=instant(event['end_at']) if event['end_at'] else None
@@ -121,8 +127,8 @@ def event_view(snapshot,read_failed=False,now=None):
         progress=countdown(seconds) if future_event else ('In progress' if chosen['status']=='active' else 'Starting now')
         if not future_event and not chosen['end_at']:progress+=' · End not listed'
         base.update(heading='LAST KNOWN SESSION' if stale else ('NEXT SESSION' if future_event else 'SESSION NOW'),
-                    title=chosen['title'],when=start.astimezone(MEDFORD_TIMEZONE).strftime('%A, %b %d, %Y · %I:%M %p %Z').replace(' 0',' '),
-                    detail=names[chosen['server_id']]+' · '+('Unconfirmed · ' if stale else '')+progress,
+                    title=event_title(chosen['title'], names.get(chosen['server_id'])),when=start.astimezone(MEDFORD_TIMEZONE).strftime('%A, %b %d, %Y · %I:%M %p %Z').replace(' 0',' '),
+                    detail=(names.get(chosen['server_id']) or 'Discord')+' · '+('Unconfirmed · ' if stale else '')+progress,
                     imminent=not stale and future_event and seconds<=24*60*60,stale=stale,note=note,
                     countdown=countdown(seconds) if future_event else '')
     else:

@@ -278,7 +278,7 @@ class QuietSidebar(QScrollArea):
             self.source_label.hide()
             status=self._weather_lines[6] or 'Observation unavailable'
             self.status_label.setText('NWS · KMFR · '+status.replace(' · Fetched','\nFetched').replace(' · Update failed','\nUpdate failed'))
-        margin=round(46*scale); gap=max(4,round((3 if compact else 12)*scale))
+        margin=round(46*scale); gap=max(2 if compact else 4,round((2 if compact else 12)*scale))
         bottom = 6 if compact else 8 if self.health_notice.issues else 30
         self.layout.setContentsMargins(margin,round((12 if compact else 45)*scale),margin,round(bottom*scale)); self.layout.setSpacing(gap)
         self.weather_layout.setSpacing(round((4 if compact else 22)*scale)); self.grid.setHorizontalSpacing(round(24*scale)); self.grid.setVerticalSpacing(round((6 if compact else 10)*scale))
